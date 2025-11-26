@@ -1,0 +1,15 @@
+﻿global using global::Microsoft.EntityFrameworkCore;
+global using global::Microsoft.AspNetCore.Http;
+global using global::Microsoft.AspNetCore.Mvc;
+global using global::System.Text;
+global using global::System.Net;
+global using global::System.ComponentModel.DataAnnotations;
+global using global::StackExchange.Redis;
+global using global::Microblog.Api.Models;
+global using global::Microblog.Api.DTOs;
+global using global::Microblog.Api.Database;
+global using global::Microblog.Api.Middlewares;
+global using global::Microblog.Api.Interfaces.ServiceInterfaces;
+global using global::Microblog.Api.Services;
+global using global::Microblog.Api.Utils;
+global using global::Microblog.Api.Interfaces.ProviderInterfaces;
