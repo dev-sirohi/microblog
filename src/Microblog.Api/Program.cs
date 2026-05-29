@@ -11,14 +11,13 @@ builder.Services.AddOpenApi();
    AddControllers() is used to create Swagger documents for controllers (APIs created via Controller classes) */
 //builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddControllers()
-    .AddJsonOptions(options => {
-        options.JsonSerializerOptions.PropertyNamingPolicy = null;
-    });
+    .AddJsonOptions(options => { options.JsonSerializerOptions.PropertyNamingPolicy = null; });
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new Exception("'DefaultConnection' not found"));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection") ??
+                         throw new Exception("'DefaultConnection' not found"));
 });
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -41,7 +40,8 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 {
-    string redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? throw new Exception("Could not fetch redis connection string");
+    string redisConnectionString = builder.Configuration["Redis:ConnectionString"] ??
+                                   throw new Exception("Could not fetch redis connection string");
     return ConnectionMultiplexer.Connect(redisConnectionString);
 });
 
@@ -50,14 +50,14 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", builder =>
     {
         builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
     options.AddPolicy("CorsPolicy", builder =>
         builder.WithOrigins("http://localhost:3000")
-               .AllowCredentials()
-               .AllowAnyHeader()
-               .AllowAnyMethod());
+            .AllowCredentials()
+            .AllowAnyHeader()
+            .AllowAnyMethod());
 });
 
 builder.Services.AddHttpContextAccessor();
@@ -77,13 +77,12 @@ builder.Services.AddHostedService<BackgroundSyncService>();
 
 // Populating CacheConfigDict with Operation Types that are not neccessarily needed but background sync service requires to run
 // Could have added a containskey check there but this way I won't have to add checks everywhere and there's no harm in adding all enums with default values - for now
-Enum.GetValues(typeof(AppConstants.InMemoryOperationType)).Cast<AppConstants.InMemoryOperationType>().ToList().ForEach(e =>
-{
-    if (!AppConstants.CacheConfigDict.ContainsKey(e))
+Enum.GetValues<AppConstants.InMemoryOperationType>().ToList()
+    .ForEach(e =>
     {
-        AppConstants.CacheConfigDict.Add(e, new AppConstants.CacheConfig());
-    }
-});
+        if (!AppConstants.CacheConfigDict.ContainsKey(e))
+            AppConstants.CacheConfigDict.Add(e, new AppConstants.CacheConfig());
+    });
 
 var app = builder.Build();
 
@@ -99,21 +98,29 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseCors("CorsPolicy");
-    app.UseHttpsRedirection();
 }
 
-var webRoot = builder.Environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-Directory.CreateDirectory(Path.Combine(webRoot, "uploads"));
+app.UseHttpsRedirection();
+
+var webRoot = app.Environment.WebRootPath
+              ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+var uploadPath = Path.Combine(webRoot, "uploads");
+Directory.CreateDirectory(uploadPath);
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(Path.Combine(webRoot, "uploads")),
-    RequestPath = "/uploads",
+    FileProvider = new PhysicalFileProvider(uploadPath),
+    RequestPath = "/uploads"
 });
 
-
-app.MapControllers();
-app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 app.Run();

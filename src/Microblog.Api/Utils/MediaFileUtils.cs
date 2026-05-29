@@ -1,10 +1,9 @@
-﻿namespace Microblog.Api.Utils
+﻿namespace Microblog.Api.Utils;
+
+public class MediaFileUtils
 {
-    public class MediaFileUtils
+    public static bool IsMediaFileValid(MediaFile file, bool throwException = true)
     {
-        public static bool IsMediaFileValid(MediaFile file, bool throwException = true)
-        {
-            return true;
-        }
+        return true;
     }
 }

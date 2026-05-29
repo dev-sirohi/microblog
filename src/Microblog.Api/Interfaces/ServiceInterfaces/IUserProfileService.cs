@@ -1,7 +1,5 @@
-﻿namespace Microblog.Api.Interfaces.ServiceInterfaces
+﻿namespace Microblog.Api.Interfaces.ServiceInterfaces;
+
+public interface IUserProfileService
 {
-    public interface IUserProfileService
-    {
-        
-    }
 }

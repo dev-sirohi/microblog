@@ -1,6 +1,5 @@
-﻿namespace Microblog.Api.Utils
+﻿namespace Microblog.Api.Utils;
+
+public class EmailUtils
 {
-    public class EmailUtils
-    {
-    }
 }

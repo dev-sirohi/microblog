@@ -1,0 +1,22 @@
+{
+  "profiles": {
+    "Docker Compose": {
+      "commandName": "DockerCompose",
+      "commandVersion": "1.0",
+      "serviceActions": {
+        "microblog.api": "StartDebugging",
+        "redis": "StartWithoutDebugging",
+        "sqlserver": "StartWithoutDebugging"
+      }
+    },
+    "Docker API only": {
+      "commandName": "DockerCompose",
+      "commandVersion": "1.0",
+      "serviceActions": {
+        "microblog.api": "StartDebugging",
+        "redis": "DoNotStart",
+        "sqlserver": "DoNotStart"
+      }
+    }
+  }
+}

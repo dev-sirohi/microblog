@@ -1,9 +1,6 @@
-﻿namespace Microblog.Api.DTOs
+﻿namespace Microblog.Api.DTOs;
+
+public class CreateUpdatePostRequestDto
 {
-    public class CreateUpdatePostRequestDto
-    {
-        public long PostId { get; set; }
-        [Required]
-        public string Content { get; set; } = string.Empty;
-    }
+    [Required] public string Content { get; set; } = string.Empty;
 }

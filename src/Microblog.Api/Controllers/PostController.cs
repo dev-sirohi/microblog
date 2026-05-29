@@ -1,98 +1,77 @@
-﻿namespace Microblog.Api.Controllers
+﻿namespace Microblog.Api.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public class PostController(IPostService postService, IUserService userService) : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class PostController : ControllerBase
+    [RateLimit(AppConstants.ApiRequestAction.CreatePost)]
+    [HttpPost]
+    public async Task<IActionResult> CreatePost([FromBody] CreateUpdatePostRequestDto createPostRequest)
     {
-        private readonly IPostService _postService;
-        private readonly IRateLimiter _rateLimiter;
-        private readonly IUserService _userService;
+        var response = new CommonUtils.ControllerResponseParams();
+        long userId = userService.GetCurrentLoggedInUserId();
+        var post = await postService.CreatePostAsync(userId, createPostRequest.Content);
+        if (post == null) throw new Exception("Cannot create post");
+        response.Success = true;
+        response.Message = "Post created successfully";
+        response.Data = post;
+        return Ok(response);
+    }
 
-        public PostController(IPostService postService, IRateLimiter rateLimiter, IUserService userService)
-        {
-            _postService = postService;
-            _rateLimiter = rateLimiter;
-            _userService = userService;
-        }
+    [HttpGet("{id:long}")]
+    public async Task<IActionResult> GetPostById(long id)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+        var post = await postService.GetPostByIdAsync(id);
+        if (post == null) throw new Exception("Cannot fetch post");
+        response.Success = true;
+        response.Message = "Post fetched successfully";
+        response.Data = post;
+        return Ok(response);
+    }
 
-        [HttpPost("createpost")]
-        public async Task<IActionResult> CreatePost([FromBody] CreateUpdatePostRequestDto createPostRequest)
+    [HttpGet("homefeed")]
+    public Task<IActionResult> GetHomeFeed()
+    {
+        try
         {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            if (await _rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.CreatePost))
-            {
-                long userId = _userService.GetCurrentLoggedInUserId();
-                Post? post = await _postService.CreatePostAsync(userId, createPostRequest.Content);
-                if (post == null)
-                {
-                    throw new Exception("Cannot create post");
-                }
-                response.Success = true;
-                response.Message = "Post created successfully";
-                response.Data = post;
-            }
-            return Ok(response);
-        }
-
-        [HttpGet("getpostbyid")]
-        public async Task<IActionResult> GetPostById([FromBody] long postId)
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            Post? post = await _postService.GetPostByIdAsync(postId);
-            if (post == null)
-            {
-                throw new Exception("Cannot fetch post");
-            }
-            response.Success = true;
-            response.Message = "Post fetched successfully";
-            response.Data = post;
-            return Ok(response);
-        }
-
-        [HttpGet("gethomefeed")]
-        public async Task<IActionResult> GetHomeFeed()
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            List<Post>? posts = new List<Post>();
+            var response = new CommonUtils.ControllerResponseParams();
+            var posts = new List<Post>();
             // Also fetch top 3 comments by likes > recency
-            if (posts == null)
-            {
-                throw new Exception("Cannot fetch post");
-            }
+            if (posts == null) throw new Exception("Cannot fetch post");
             response.Success = true;
             response.Message = "Post fetched successfully";
             response.Data = posts;
-            return Ok(response);
+            return Task.FromResult<IActionResult>(Ok(response));
         }
-
-        [HttpPost("updatepost")]
-        public async Task<IActionResult> UpdatePost([FromBody] CreateUpdatePostRequestDto updatePostRequest)
+        catch (Exception exception)
         {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            if (await _rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.UpdatePost))
-            {
-                long userId = _userService.GetCurrentLoggedInUserId();
-                Post? post = await _postService.UpdatePostAsync(updatePostRequest.PostId, userId, updatePostRequest.Content);
-                if (post == null)
-                {
-                    throw new Exception("Cannot update post");
-                }
-                response.Success = true;
-                response.Message = "Post updated successfully";
-                response.Data = post;
-            }
-            return Ok(response);
+            return Task.FromException<IActionResult>(exception);
         }
+    }
 
-        [HttpPost("deletepostbyid")]
-        public async Task<IActionResult> DeletePostById([FromBody] long postId)
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            long userId = _userService.GetCurrentLoggedInUserId();
-            await _postService.DeletePostAsync(postId, userId);
-            response.Success = true;
-            response.Message = "Post deleted successfully";
-            return Ok(response);
-        }
+    [RateLimit(AppConstants.ApiRequestAction.UpdatePost)]
+    [HttpPatch("{id:long}")]
+    public async Task<IActionResult> UpdatePost(long id, [FromBody] CreateUpdatePostRequestDto updatePostRequest)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+        long userId = userService.GetCurrentLoggedInUserId();
+        var post = await postService.UpdatePostAsync(id, userId, updatePostRequest.Content);
+        if (post == null) throw new Exception("Cannot update post");
+        response.Success = true;
+        response.Message = "Post updated successfully";
+        response.Data = post;
+        return Ok(response);
+    }
+
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> DeletePostById(long id)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+        long userId = userService.GetCurrentLoggedInUserId();
+        await postService.DeletePostAsync(id, userId);
+        response.Success = true;
+        response.Message = "Post deleted successfully";
+        return Ok(response);
     }
 }

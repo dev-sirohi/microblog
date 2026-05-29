@@ -1,77 +1,110 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿namespace Microblog.Api.Controllers;
 
-namespace Microblog.Api.Controllers
+[Authorize]
+[Route("api/[controller]")]
+[ApiController]
+public class UserFollowController(
+    IUserFollowService userFollowService,
+    IUserService userService,
+    IRateLimiter rateLimiter)
+    : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class UserFollowController : ControllerBase
+    private readonly IRateLimiter _rateLimiter = rateLimiter;
+
+    [RateLimit(AppConstants.ApiRequestAction.Follow)]
+    [HttpPost("follow/{userId:long}")]
+    public async Task<IActionResult> FollowUser(long userId)
     {
-        private readonly IUserFollowService _userFollowService;
-        private readonly IUserService _userService;
-        private readonly IRateLimiter _rateLimiter;
+        var response = new CommonUtils.ControllerResponseParams();
 
-        public UserFollowController(IUserFollowService userFollowService, IUserService userService, IRateLimiter rateLimiter)
-        {
-            _userFollowService = userFollowService;
-            _userService = userService;
-            _rateLimiter = rateLimiter;
-        }
+        long loggedInUserId = userService.GetCurrentLoggedInUserId();
+        await userFollowService.FollowUserAsync(loggedInUserId, userId);
+        var user = await userService.GetUserByIdAsync(userId);
 
-        [HttpPost("follow")]
-        public async Task<IActionResult> FollowUser([FromQuery] long userId)
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            long loggedInUserId = _userService.GetCurrentLoggedInUserId();
-            if (await _rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.Follow))
-            {
-                await _userFollowService.FollowUserAsync(loggedInUserId, userId);
-            }
-            User? user = await _userService.GetUserByIdAsync(userId);
-            response.Success = true;
-            response.Message = "Following user " + user?.Username;
-            return Ok(response);
-        }
+        response.Success = true;
+        response.Message = "Following user " + user?.Username;
 
-        [HttpPost("unfollow")]
-        public async Task<IActionResult> UnfollowUser([FromQuery] long followingUserId)
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            long loggedInUserId = _userService.GetCurrentLoggedInUserId();
-            if (await _rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.Unfollow))
-            {
-                await _userFollowService.UnfollowUserAsync(loggedInUserId, followingUserId);
-            }
-            User? user = await _userService.GetUserByIdAsync(followingUserId);
-            response.Success = true;
-            response.Message = "Unfollowed user " + user?.Username;
-            return Ok(response);
-        }
+        return Ok(response);
+    }
 
-        [HttpGet("getfollowers")]
-        public async Task<IActionResult> GetFollowers()
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            long loggedInUserId = _userService.GetCurrentLoggedInUserId();
-            IReadOnlyCollection<long> followerIdList = await _userFollowService.GetFollowerIdListAsync(loggedInUserId);
-            IReadOnlyCollection<User> followerList = await _userService.GetUserListByIdListReadOnlyAsync(followerIdList);
-            IReadOnlyCollection<UserResponseDto>? followerResponseList = CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followerList);
-            response.Success = true;
-            response.Data = followerResponseList;
-            return Ok(response);
-        }
+    [RateLimit(AppConstants.ApiRequestAction.Unfollow)]
+    [HttpPost("unfollow/{userId:long}")]
+    public async Task<IActionResult> UnfollowUser(long userId)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
 
-        [HttpGet("getfollowing")]
-        public async Task<IActionResult> GetFollowing()
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            long loggedInUserId = _userService.GetCurrentLoggedInUserId();
-            IReadOnlyCollection<long> followingIdList = await _userFollowService.GetFollowingIdListAsync(loggedInUserId);
-            IReadOnlyCollection<User> followingUsersList = await _userService.GetUserListByIdListReadOnlyAsync(followingIdList);
-            IReadOnlyCollection<UserResponseDto>? followingUsersResponseList = CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followingUsersList);
-            response.Success = true;
-            response.Data = followingUsersResponseList;
-            return Ok(response);
-        }
+        long loggedInUserId = userService.GetCurrentLoggedInUserId();
+        await userFollowService.UnfollowUserAsync(loggedInUserId, userId);
+        var user = await userService.GetUserByIdAsync(userId);
+
+        response.Success = true;
+        response.Message = "Unfollowed user " + user?.Username;
+
+        return Ok(response);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetFollowers()
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+
+        long loggedInUserId = userService.GetCurrentLoggedInUserId();
+        var followerIdList = await userFollowService.GetFollowerIdListAsync(loggedInUserId);
+        var followerList = await userService.GetUserListByIdListReadOnlyAsync(followerIdList);
+        var followerResponseList = CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followerList);
+
+        response.Success = true;
+        response.Data = followerResponseList;
+
+        return Ok(response);
+    }
+
+    [HttpGet("{userId:long}")]
+    public async Task<IActionResult> GetFollowers(long userId)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+
+        var followerIdList = await userFollowService.GetFollowerIdListAsync(userId);
+        var followerList = await userService.GetUserListByIdListReadOnlyAsync(followerIdList);
+        var followerResponseList = CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followerList);
+
+        response.Success = true;
+        response.Data = followerResponseList;
+
+        return Ok(response);
+    }
+
+
+    [HttpGet("following")]
+    public async Task<IActionResult> GetFollowing()
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+
+        long loggedInUserId = userService.GetCurrentLoggedInUserId();
+        var followingIdList = await userFollowService.GetFollowingIdListAsync(loggedInUserId);
+        var followingUsersList = await userService.GetUserListByIdListReadOnlyAsync(followingIdList);
+        var followingUsersResponseList =
+            CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followingUsersList);
+
+        response.Success = true;
+        response.Data = followingUsersResponseList;
+
+        return Ok(response);
+    }
+
+    [HttpGet("following/{userId:long}")]
+    public async Task<IActionResult> GetFollowing(long userId)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+
+        var followingIdList = await userFollowService.GetFollowingIdListAsync(userId);
+        var followingUsersList = await userService.GetUserListByIdListReadOnlyAsync(followingIdList);
+        var followingUsersResponseList =
+            CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followingUsersList);
+
+        response.Success = true;
+        response.Data = followingUsersResponseList;
+
+        return Ok(response);
     }
 }

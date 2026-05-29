@@ -1,43 +1,39 @@
-﻿namespace Microblog.Api.Controllers
+﻿namespace Microblog.Api.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public class UserLikeController(
+    IUserService userService,
+    IUserLikeService userLikeService,
+    IRateLimiter rateLimiter)
+    : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class UserLikeController : ControllerBase
+    [RateLimit(AppConstants.ApiRequestAction.LikePost)]
+    [HttpPost("like/{id:long}")]
+    public async Task<IActionResult> LikePost(long id)
     {
-        private readonly IUserService _userService;
-        private readonly IUserLikeService _userLikeService;
-        private IRateLimiter _rateLimiter;
-        public UserLikeController(IUserService userService, IUserLikeService userLikeService, IRateLimiter rateLimiter)
+        var response = new CommonUtils.ControllerResponseParams();
+        if (await rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.LikePost))
         {
-            _userService = userService;
-            _userLikeService = userLikeService;
-            _rateLimiter = rateLimiter;
+            long userId = userService.GetCurrentLoggedInUserId();
+            await userLikeService.LikePostAsync(userId, id);
         }
 
-        [HttpPost("likepost")]
-        public async Task<IActionResult> LikePost([FromQuery] long postId)
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            if (await _rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.LikePost))
-            {
-                long userId = _userService.GetCurrentLoggedInUserId();
-                await _userLikeService.LikePostAsync(userId, postId);
-            }
-            response.Success = true;
-            return Ok(response);
-        }
+        response.Success = true;
+        return Ok(response);
+    }
 
-        [HttpPost("unlikepost")]
-        public async Task<IActionResult> UnlikePost([FromQuery] long postId)
-        {
-            CommonUtils.ControllerResponseParams response = new CommonUtils.ControllerResponseParams();
-            if (await _rateLimiter.IsRequestAllowedAsync(AppConstants.ApiRequestAction.LikePost))
-            {
-                long userId = _userService.GetCurrentLoggedInUserId();
-                await _userLikeService.UnlikePostAsync(userId, postId);
-            }
-            response.Success = true;
-            return Ok(response);
-        }
+    [RateLimit(AppConstants.ApiRequestAction.LikePost)]
+    [HttpPost("unlike/{id:long}")]
+    public async Task<IActionResult> UnlikePost(long id)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+
+        long userId = userService.GetCurrentLoggedInUserId();
+        await userLikeService.UnlikePostAsync(userId, id);
+
+        response.Success = true;
+
+        return Ok(response);
     }
 }

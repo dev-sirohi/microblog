@@ -1,7 +1,6 @@
-﻿namespace Microblog.Api.Interfaces.ProviderInterfaces
+﻿namespace Microblog.Api.Interfaces.ProviderInterfaces;
+
+internal interface IEmbeddingProvider
 {
-    internal interface IEmbeddingProvider
-    {
-        Task<float[]> GetEmbeddingAsync(string input, CancellationToken cancellationToken = default);
-    }
+    Task<float[]> GetEmbeddingAsync(string input, CancellationToken cancellationToken = default);
 }
