@@ -6,6 +6,13 @@ This project focuses on **backend architecture, caching strategies, and scalable
 
 ---
 
+**API Preview**
+
+<img width="929" height="893" alt="image" src="https://github.com/user-attachments/assets/22d5a004-f5fd-4683-aad5-8ce152997c39" />
+
+
+---
+
 ## ⚙️ Tech Stack
 
 **Backend**
