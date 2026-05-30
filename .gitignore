@@ -59,3 +59,4 @@ nunit-*.xml
 *.user
 **/.vs
 **/.vs/
+reports/

@@ -2,10 +2,14 @@
 
 namespace Microblog.Api.Filters;
 
-public class RateLimitFilter(AppConstants.ApiRequestAction action, IRateLimiter rateLimiterService) : IAsyncActionFilter
+public class RateLimitFilter(AppConstants.ApiRequestAction action, IRateLimiter rateLimiterService, GlobalConfig globalConfig) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (await rateLimiterService.IsRequestAllowedAsync(action)) await next();
+        if (!globalConfig.DisableRateLimiting)
+        {
+            await rateLimiterService.IsRequestAllowedAsync(action);
+        }
+        await next();
     }
 }

@@ -2,12 +2,10 @@
 
 [Route("api/[controller]")]
 [ApiController]
-public class AuthController(IAuthService authService, IConfiguration configuration, IRateLimiter rateLimiter)
+public class AuthController(IAuthService authService, IConfiguration configuration)
     : ControllerBase
 {
-    private readonly IRateLimiter _rateLimiter = rateLimiter;
-
-    [RateLimit(AppConstants.ApiRequestAction.Register)]
+    [RateLimit(AppConstants.ApiRequestAction.Login)]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] UserRegisterDto request)
     {

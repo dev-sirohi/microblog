@@ -75,6 +75,8 @@ builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IMediaService, MediaService>();
 builder.Services.AddHostedService<BackgroundSyncService>();
 
+builder.Services.AddSingleton<GlobalConfig>();
+
 // Populating CacheConfigDict with Operation Types that are not neccessarily needed but background sync service requires to run
 // Could have added a containskey check there but this way I won't have to add checks everywhere and there's no harm in adding all enums with default values - for now
 Enum.GetValues<AppConstants.InMemoryOperationType>().ToList()
@@ -94,6 +96,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
     app.UseCors("AllowAll");
     app.UseTestMiddleware();
+    app.Services.GetRequiredService<GlobalConfig>().DisableRateLimiting = true;
 }
 else
 {
