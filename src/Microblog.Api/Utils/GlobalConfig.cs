@@ -1,23 +1,24 @@
 ﻿namespace Microblog.Api.Utils;
 
-public class GlobalConfig
+public sealed class GlobalConfig
 {
-    private IConfiguration _configuration;
-    private bool _isInitialized = false;
     public bool DisableRateLimiting { get; private set; }
+    
+    private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
 
-    public GlobalConfig(IConfiguration configuration) {
-        if (_isInitialized)
-        {
-            throw new Exception("Cannot reinitialize global config");
-        }
-        _isInitialized = true;
+    public GlobalConfig(IConfiguration configuration, IHostEnvironment environment)
+    {
         _configuration = configuration;
+        _environment = environment;
         Initialize();
     }
 
     private void Initialize()
     {
-        DisableRateLimiting = _configuration.GetValue();
+        if (_environment.IsDevelopment())
+        {
+            DisableRateLimiting = true;
+        }
     }
 }

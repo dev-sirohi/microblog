@@ -63,6 +63,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddLogging();
 
+builder.Services.AddSingleton<GlobalConfig>();
+
 // Custom Services - Remember: Once a service is dependent on another scoped service, it must also be registered as scoped
 builder.Services.AddScoped<IRateLimiter, RateLimiter>();
 builder.Services.AddScoped<IAuthService, AuthService>();
