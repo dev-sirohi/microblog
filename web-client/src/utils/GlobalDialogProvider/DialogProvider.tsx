@@ -3,8 +3,6 @@ import type { DialogConfig, DialogContextType, DialogButton } from "./DialogInte
 import { GlobalDialog } from "../../globalDialogRef";
 import { ERROR, TOAST } from "./DialogPresets";
 import { createPortal } from "react-dom";
-import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
-
 
 const DialogContext = React.createContext<DialogContextType | undefined>(undefined);
 
@@ -46,7 +44,6 @@ export function GlobalDialogProvider({ children }: { children: React.ReactNode }
 
     const hideDialog = (value?: any) => {
         if (promiseResolver) promiseResolver(value);
-
         setPromiseResolver(null);
         setDialogConfig(null);
     };
@@ -54,32 +51,21 @@ export function GlobalDialogProvider({ children }: { children: React.ReactNode }
     const handleButtonClick = async (btn: DialogButton, config?: DialogConfig) => {
         if (btn.action) {
             let params: any = undefined;
-
             if (config?.fields && Array.isArray(config.fields)) {
                 params = {};
                 config.fields.forEach(fieldName => {
                     const elem = document.getElementsByName(fieldName)[0] as HTMLInputElement;
-                    if (elem) {
-                        params[fieldName] = elem.value;
-                    }
+                    if (elem) params[fieldName] = elem.value;
                 });
             }
-
             if (btn.value === undefined) {
-                // start loading symbol
                 const result = await btn.action(params);
-                // hide loading symbol
                 hideDialog(result);
                 return;
             }
             await btn.action(params);
         }
-
         hideDialog(btn.value);
-    };
-
-    const handleBackdropClick = () => {
-        if (dialogConfig?.closeOnBackdropClick) hideDialog(null);
     };
 
     GlobalDialog.showDialog = showDialog;
@@ -90,54 +76,52 @@ export function GlobalDialogProvider({ children }: { children: React.ReactNode }
         return await showDialog(TOAST(message));
     };
 
-
     return (
         <DialogContext.Provider value={{ showDialog, hideDialog }}>
             {children}
 
-            {createPortal(
-                <Snackbar
-                    open={!!dialogConfig?.isToast}
-                    autoHideDuration={dialogConfig?.toastDuration ?? 2500}
-                    onClose={() => hideDialog(null)}
-                    anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-                >
-                    <Alert severity="info" variant="filled">
-                        {dialogConfig?.message}
-                    </Alert>
-                </Snackbar>,
+            {/* Toast notification */}
+            {dialogConfig?.isToast && createPortal(
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
+                    <div className="bg-gray-800 text-white px-5 py-3 rounded-lg shadow-lg text-sm">
+                        {dialogConfig.message}
+                    </div>
+                </div>,
                 document.body
             )}
 
-            {dialogConfig && !dialogConfig.isToast &&
-                createPortal(
-                    <Dialog
-                        open={true}
-                        onClose={() => dialogConfig.closeOnBackdropClick && hideDialog(null)}
+            {/* Modal dialog */}
+            {dialogConfig && !dialogConfig.isToast && createPortal(
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                    onClick={() => dialogConfig.closeOnBackdropClick && hideDialog(null)}
+                >
+                    <div
+                        className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
+                        onClick={e => e.stopPropagation()}
                     >
-                        {dialogConfig.title && <DialogTitle>{dialogConfig.title}</DialogTitle>}
-
-                        <DialogContent>
-                            {dialogConfig.message}
-                        </DialogContent>
-
-                        <DialogActions>
+                        {dialogConfig.title && (
+                            <h2 className="text-lg font-semibold mb-3">{dialogConfig.title}</h2>
+                        )}
+                        {dialogConfig.message && (
+                            <p className="text-sm text-gray-600 mb-4">{dialogConfig.message}</p>
+                        )}
+                        {dialogConfig.html}
+                        <div className="flex justify-end gap-2 mt-4">
                             {dialogConfig.buttons?.map((btn, i) => (
-                                <Button
+                                <button
                                     key={i}
                                     onClick={() => handleButtonClick(btn, dialogConfig)}
-                                    variant="contained"
-                                    color="primary"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
                                 >
                                     {btn.label}
-                                </Button>
+                                </button>
                             ))}
-                        </DialogActions>
-                    </Dialog>,
-                    document.body
-                )
-            }
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </DialogContext.Provider>
     );
 }
-

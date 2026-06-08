@@ -1,9 +1,11 @@
-﻿namespace Microblog.Api.Services;
+using Microblog.Api.Infrastructure.Storage;
+
+namespace Microblog.Api.Services;
 
 public class MediaService(
     AppDbContext dbContext,
     IConnectionMultiplexer connectionMultiplexer,
-    IWebHostEnvironment env)
+    IStorageService storageService)
     : IMediaService
 {
     private readonly IDatabase _inMemoryDb = connectionMultiplexer.GetDatabase();
@@ -12,23 +14,16 @@ public class MediaService(
     {
         if (file == null || file.Length == 0) throw new Exception("No file provided.");
 
-        string relativePath = GenerateFilePath(entityId, entityType);
-        string fullPath = Path.Combine(env.ContentRootPath, "wwwroot", relativePath.TrimStart('/'));
-        string directory = Path.GetDirectoryName(fullPath)!;
+        string relativePath = GenerateRelativePath(entityId, entityType);
 
-        if (!Directory.Exists(directory)) Directory.CreateDirectory(directory);
-
-        await using (var stream = new FileStream(fullPath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
+        string storedPath = await storageService.SaveFileAsync(file, relativePath);
 
         var media = new MediaFile
         {
             EntityId = entityId,
             EntityType = entityType,
-            FileName = Path.GetFileName(fullPath),
-            FilePath = relativePath,
+            FileName = Path.GetFileName(storedPath),
+            FilePath = storedPath,
             MimeType = file.ContentType,
             FileSize = file.Length
         };
@@ -42,32 +37,24 @@ public class MediaService(
         {
             await _inMemoryDb.StringSetAsync(
                 InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.ADD_MEDIA_FILE_PATH, entityType, entityId),
-                relativePath);
+                storedPath);
         }
-        catch (Exception ex)
-        {
-        }
+        catch { /* cache failure is non-critical */ }
     }
 
     public async Task<string> GetMediaFilePathAsync(long entityId, AppConstants.MediaEntityType entityType)
     {
         if (entityId <= 0) throw new Exception("Invalid entity id");
 
-        string filePath = string.Empty;
-
         try
         {
-            string key_addMediaFilePath = InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.ADD_MEDIA_FILE_PATH,
-                entityType, entityId);
-            filePath = Convert.ToString(await _inMemoryDb.StringGetAsync(key_addMediaFilePath))
-                       ?? throw new Exception();
+            string key = InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.ADD_MEDIA_FILE_PATH, entityType, entityId);
+            string? filePath = Convert.ToString(await _inMemoryDb.StringGetAsync(key));
+            if (!string.IsNullOrEmpty(filePath)) return storageService.GetUrl(filePath);
         }
-        catch (Exception ex)
-        {
-            filePath = await GetMediaFilePathFallbackDbAsync(entityId, entityType);
-        }
+        catch { /* fall through to DB */ }
 
-        return filePath;
+        return await GetMediaFilePathFallbackDbAsync(entityId, entityType);
     }
 
     public async Task<string> GetMediaFilePathFallbackDbAsync(long entityId, AppConstants.MediaEntityType entityType,
@@ -75,38 +62,22 @@ public class MediaService(
     {
         if (entityId <= 0) throw new Exception("Invalid entity id");
 
-        string filePath = string.Empty;
-
         var mediaFile =
             await dbContext.MediaFiles.FirstOrDefaultAsync(m => m.EntityType == entityType && m.EntityId == entityId);
         if (mediaFile == null) throw new Exception("File doesn't exist");
 
-        if (!isFallback) return mediaFile.FilePath;
-        try
+        if (isFallback)
         {
-            await _inMemoryDb.StringSetAsync(
-                InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.ADD_MEDIA_FILE_PATH, entityType, entityId),
-                mediaFile.FilePath);
+            try
+            {
+                await _inMemoryDb.StringSetAsync(
+                    InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.ADD_MEDIA_FILE_PATH, entityType, entityId),
+                    mediaFile.FilePath);
+            }
+            catch { }
         }
-        catch (Exception ex)
-        {
-        }
 
-        return mediaFile.FilePath;
-    }
-
-    private static string GenerateFilePath(long entityId, AppConstants.MediaEntityType entityType)
-    {
-        if (entityId <= 0) throw new Exception("Invalid entity id");
-
-        string path = entityType switch
-        {
-            AppConstants.MediaEntityType.User => $"/uploads/users/{entityId}/profile_{Guid.NewGuid()}.jpg",
-            AppConstants.MediaEntityType.Post => $"/uploads/posts/{entityId}/{Guid.NewGuid()}.jpg",
-            _ => throw new Exception("Invalid entity type")
-        };
-
-        return path;
+        return storageService.GetUrl(mediaFile.FilePath);
     }
 
     public async Task DeleteMediaFileAsync(long entityId, AppConstants.MediaEntityType entityType)
@@ -115,17 +86,28 @@ public class MediaService(
         var mediaFile =
             await dbContext.MediaFiles.FirstOrDefaultAsync(m => m.EntityType == entityType && m.EntityId == entityId);
         if (mediaFile == null) throw new Exception("File doesn't exist");
-        string fullPath = Path.Combine(env.ContentRootPath, "wwwroot", mediaFile.FilePath.TrimStart('/'));
-        if (File.Exists(fullPath)) File.Delete(fullPath);
+
+        await storageService.DeleteFileAsync(mediaFile.FilePath);
         dbContext.MediaFiles.Remove(mediaFile);
         await dbContext.SaveChangesAsync();
+
         try
         {
             await _inMemoryDb.KeyDeleteAsync(
                 InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.ADD_MEDIA_FILE_PATH, entityType, entityId));
         }
-        catch (Exception ex)
+        catch { }
+    }
+
+    private static string GenerateRelativePath(long entityId, AppConstants.MediaEntityType entityType)
+    {
+        if (entityId <= 0) throw new Exception("Invalid entity id");
+
+        return entityType switch
         {
-        }
+            AppConstants.MediaEntityType.User => $"/uploads/users/{entityId}/profile_{Guid.NewGuid()}.jpg",
+            AppConstants.MediaEntityType.Post => $"/uploads/posts/{entityId}/{Guid.NewGuid()}.jpg",
+            _ => throw new Exception("Invalid entity type")
+        };
     }
 }

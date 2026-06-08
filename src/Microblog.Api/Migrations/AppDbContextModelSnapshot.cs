@@ -134,6 +134,10 @@ namespace Microblog.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<byte[]>("EmbeddingData")
+                        .HasColumnType("varbinary(max)")
+                        .IsRequired(false);
+
                     b.Property<DateTime>("ModifiedAt")
                         .HasColumnType("datetime2");
 

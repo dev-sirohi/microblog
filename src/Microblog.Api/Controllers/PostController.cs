@@ -1,10 +1,16 @@
-﻿namespace Microblog.Api.Controllers;
+using Microsoft.AspNetCore.RateLimiting;
+using Microblog.Api.Features.Recommendations;
+
+namespace Microblog.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-public class PostController(IPostService postService, IUserService userService) : ControllerBase
+public class PostController(
+    IPostService postService,
+    IUserService userService,
+    IServiceProvider serviceProvider) : ControllerBase
 {
-    [RateLimit(AppConstants.ApiRequestAction.CreatePost)]
+    [EnableRateLimiting("create-post")]
     [HttpPost]
     public async Task<IActionResult> CreatePost([FromBody] CreateUpdatePostRequestDto createPostRequest)
     {
@@ -18,6 +24,7 @@ public class PostController(IPostService postService, IUserService userService) 
         return Ok(response);
     }
 
+    [EnableRateLimiting("feed")]
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetPostById(long id)
     {
@@ -30,6 +37,7 @@ public class PostController(IPostService postService, IUserService userService) 
         return Ok(response);
     }
 
+    [EnableRateLimiting("feed")]
     [HttpGet("homefeed")]
     public Task<IActionResult> GetHomeFeed()
     {
@@ -37,8 +45,6 @@ public class PostController(IPostService postService, IUserService userService) 
         {
             var response = new CommonUtils.ControllerResponseParams();
             var posts = new List<Post>();
-            // Also fetch top 3 comments by likes > recency
-            if (posts == null) throw new Exception("Cannot fetch post");
             response.Success = true;
             response.Message = "Post fetched successfully";
             response.Data = posts;
@@ -50,7 +56,7 @@ public class PostController(IPostService postService, IUserService userService) 
         }
     }
 
-    [RateLimit(AppConstants.ApiRequestAction.UpdatePost)]
+    [EnableRateLimiting("create-post")]
     [HttpPatch("{id:long}")]
     public async Task<IActionResult> UpdatePost(long id, [FromBody] CreateUpdatePostRequestDto updatePostRequest)
     {
@@ -72,6 +78,26 @@ public class PostController(IPostService postService, IUserService userService) 
         await postService.DeletePostAsync(id, userId);
         response.Success = true;
         response.Message = "Post deleted successfully";
+        return Ok(response);
+    }
+
+    [EnableRateLimiting("feed")]
+    [HttpGet("{id:long}/recommendations")]
+    public async Task<IActionResult> GetRecommendations(long id, [FromQuery] int limit = 5)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+        var recommendations = serviceProvider.GetService<IRecommendationService>();
+        if (recommendations is null)
+        {
+            response.Success = false;
+            response.Message = "Recommendations feature is disabled. Enable Features:EnableEmbeddings in configuration.";
+            return Ok(response);
+        }
+
+        var posts = await recommendations.GetRecommendationsAsync(id, Math.Clamp(limit, 1, 10));
+        response.Success = true;
+        response.Message = "Recommendations fetched successfully";
+        response.Data = posts;
         return Ok(response);
     }
 }

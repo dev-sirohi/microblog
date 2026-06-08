@@ -2,9 +2,6 @@ import API from './ApiUtils';
 import type {
     ApiResponse,
     GetCommentsRequest,
-    LoginRequest,
-    RegisterRequest,
-    UserProfile,
     AddCommentRequest,
     Comment
 } from '../interfaces/GlobalInterfaceExport';

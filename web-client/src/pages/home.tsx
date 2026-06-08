@@ -1,134 +1,126 @@
 import React from 'react';
-import type {
-    GetPostRequest,
-    Post
-} from "../interfaces/GlobalInterfaceExport";
-import PostApi from "../api/PostApi";
-import { GlobalDialog } from '../globalDialogRef';
+import type { Post } from '../interfaces/GlobalInterfaceExport';
+import PostApi from '../api/PostApi';
+import Layout from '../components/Layout';
+import PostCard from '../components/PostCard';
 
-export default function Home(): React.ReactNode {
+export default function Home() {
     const [posts, setPosts] = React.useState<Post[]>([]);
-    const [pageData, setPageData] = React.useState<any>({});
-    const [loading, setLoading] = React.useState<boolean>(false);
-    const [pageNumber, setPageNumber] = React.useState<number>(1);
-    const [pageSize, setPageSize] = React.useState<number>(10);
-    const [hasMore, setHasMore] = React.useState<boolean>(true);
+    const [page, setPage] = React.useState(1);
+    const [loading, setLoading] = React.useState(false);
+    const [hasMore, setHasMore] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
+    const [newPostContent, setNewPostContent] = React.useState('');
+    const [posting, setPosting] = React.useState(false);
 
     const loaderRef = React.useRef<HTMLDivElement | null>(null);
 
-    const loadPosts = async () => {
-        if (loading) return;
+    const loadPosts = React.useCallback(async () => {
+        if (loading || !hasMore) return;
         setLoading(true);
         try {
-            const getPostReqObj: GetPostRequest = {
-                page: pageNumber,
-                pageSize: pageSize,
-            };
-            const res = await PostApi.getHomeFeed(getPostReqObj);
-            if (!res.Success) {
-                throw new Error(res.Message || "Unable to fetch posts");
-            }
+            const res = await PostApi.getHomeFeed(page, 10);
             const newPosts: Post[] = res.Data ?? [];
-            if (newPosts.length === 0) {
-                setHasMore(false);
-            }
-            // Using functional method because writing [...posts, ...newPosts] risks using stale data
-            // post => ... always fetches the latest data
-            setPosts(post => [...post, ...newPosts]);
+            if (newPosts.length < 10) setHasMore(false);
+            setPosts(prev => [...prev, ...newPosts]);
         } catch (ex: any) {
-            GlobalDialog.showError(ex.message);
+            setError(ex.message ?? 'Failed to load posts');
             setHasMore(false);
         } finally {
             setLoading(false);
         }
-    }
+    }, [page, loading, hasMore]);
 
     React.useEffect(() => {
         loadPosts();
-    }, [pageNumber]);
+    }, [page]);
 
     React.useEffect(() => {
-        if ((posts || []).length === 0) return;
         if (!loaderRef.current || !hasMore) return;
-        const observer = new IntersectionObserver((entries) => {
-            const loader = entries[0];
-            if (loader.isIntersecting && !loading) {
-                setPageNumber(prev => prev + 1);
-            }
-        }, {
-            root: null,
-            rootMargin: "0px",
-            threshold: 1.0,
-        });
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting && !loading) setPage(p => p + 1);
+        }, { threshold: 1.0 });
         observer.observe(loaderRef.current);
-        // Clean up so that on useEffect reload we don't have multiple current and past observers sending multiple API calls
         return () => observer.disconnect();
-    }, [loading]);
+    }, [loading, hasMore]);
+
+    const handleCreatePost = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newPostContent.trim()) return;
+        setPosting(true);
+        try {
+            const res = await PostApi.createPost(newPostContent.trim());
+            if (res.Data) {
+                setPosts(prev => [res.Data!, ...prev]);
+                setNewPostContent('');
+            }
+        } catch (ex: any) {
+            setError(ex.message ?? 'Failed to create post');
+        } finally {
+            setPosting(false);
+        }
+    };
 
     return (
-        <div style={{ width: "600px", margin: "0 auto" }}>
-            {posts.map((p, i) => (
-                <div
-                    key={p.id}
-                    style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "16px",
-                        marginBottom: "16px",
-                        borderRadius: "10px",
-                        background: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.06)"
-                    }}
-                >
-                    <div style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: "8px"
-                    }}>
-                        <span style={{ fontWeight: "bold" }}>User {p.userId}</span>
-                        <span style={{ color: "#777", fontSize: "0.85rem" }}>
-                            {new Date(p.createdAt).toLocaleString()}
-                        </span>
-                    </div>
-                    <p style={{ fontSize: "1rem", marginBottom: "10px" }}>
-                        {p.content}
-                    </p>
-                    {p.medialUrl && (
-                        <img
-                            src={p.medialUrl}
-                            alt="post"
-                            style={{
-                                width: "100%",
-                                maxHeight: "350px",
-                                objectFit: "cover",
-                                borderRadius: "8px",
-                                marginBottom: "10px"
-                            }}
-                        />
-                    )}
-                    <div>
-                        {p.tags?.map((t, tagIndex) => (
-                            <span
-                                key={tagIndex}
-                                style={{
-                                    display: "inline-block",
-                                    padding: "4px 8px",
-                                    background: "#f2f2f2",
-                                    borderRadius: "6px",
-                                    fontSize: "0.85rem",
-                                    marginRight: "6px",
-                                    marginBottom: "6px"
-                                }}
-                            >
-                                #{t}
-                            </span>
-                        ))}
-                    </div>
+        <Layout>
+            {/* Compose */}
+            <form
+                onSubmit={handleCreatePost}
+                className="rounded-xl p-4 mb-6 border"
+                style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+            >
+                <textarea
+                    value={newPostContent}
+                    onChange={e => setNewPostContent(e.target.value)}
+                    placeholder="What's on your mind?"
+                    rows={3}
+                    className="w-full resize-none text-sm outline-none bg-transparent"
+                    style={{ color: 'var(--color-text)' }}
+                />
+                <div className="flex justify-end mt-2">
+                    <button
+                        type="submit"
+                        disabled={posting || !newPostContent.trim()}
+                        className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+                        style={{
+                            backgroundColor: 'var(--color-primary)',
+                            color: '#fff',
+                        }}
+                    >
+                        {posting ? 'Posting…' : 'Post'}
+                    </button>
                 </div>
+            </form>
+
+            {error && (
+                <p className="text-sm mb-4 text-center" style={{ color: 'var(--color-danger)' }}>
+                    {error}
+                </p>
+            )}
+
+            {posts.map(post => (
+                <PostCard key={post.Id} post={post} />
             ))}
 
-            <div ref={loaderRef} style={{ height: "40px" }} />
+            <div ref={loaderRef} className="h-10" />
 
-            {loading && <p>Loading...</p>}
-        </div>
+            {loading && (
+                <p className="text-center text-sm py-4" style={{ color: 'var(--color-muted)' }}>
+                    Loading…
+                </p>
+            )}
+
+            {!hasMore && posts.length > 0 && (
+                <p className="text-center text-sm py-4" style={{ color: 'var(--color-muted)' }}>
+                    You've reached the end
+                </p>
+            )}
+
+            {!loading && posts.length === 0 && !error && (
+                <p className="text-center text-sm py-8" style={{ color: 'var(--color-muted)' }}>
+                    No posts yet. Be the first to post!
+                </p>
+            )}
+        </Layout>
     );
 }

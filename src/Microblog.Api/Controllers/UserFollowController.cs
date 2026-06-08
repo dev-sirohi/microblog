@@ -1,4 +1,7 @@
-﻿namespace Microblog.Api.Controllers;
+using Microsoft.AspNetCore.RateLimiting;
+using Microblog.Api.Infrastructure.Messaging;
+
+namespace Microblog.Api.Controllers;
 
 [Authorize]
 [Route("api/[controller]")]
@@ -6,12 +9,10 @@
 public class UserFollowController(
     IUserFollowService userFollowService,
     IUserService userService,
-    IRateLimiter rateLimiter)
+    IServiceProvider serviceProvider)
     : ControllerBase
 {
-    private readonly IRateLimiter _rateLimiter = rateLimiter;
-
-    [RateLimit(AppConstants.ApiRequestAction.Follow)]
+    [EnableRateLimiting("create-post")]
     [HttpPost("follow/{userId:long}")]
     public async Task<IActionResult> FollowUser(long userId)
     {
@@ -21,13 +22,24 @@ public class UserFollowController(
         await userFollowService.FollowUserAsync(loggedInUserId, userId);
         var user = await userService.GetUserByIdAsync(userId);
 
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var publisher = serviceProvider.GetService<IMessagePublisher>();
+                if (publisher is not null)
+                    await publisher.PublishAsync("user.followed", new UserFollowedEvent(loggedInUserId, userId, true, DateTime.UtcNow));
+            }
+            catch { }
+        });
+
         response.Success = true;
         response.Message = "Following user " + user?.Username;
 
         return Ok(response);
     }
 
-    [RateLimit(AppConstants.ApiRequestAction.Unfollow)]
+    [EnableRateLimiting("create-post")]
     [HttpPost("unfollow/{userId:long}")]
     public async Task<IActionResult> UnfollowUser(long userId)
     {
@@ -73,7 +85,6 @@ public class UserFollowController(
 
         return Ok(response);
     }
-
 
     [HttpGet("following")]
     public async Task<IActionResult> GetFollowing()

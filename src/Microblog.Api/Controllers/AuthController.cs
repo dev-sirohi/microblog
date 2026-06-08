@@ -1,11 +1,13 @@
-﻿namespace Microblog.Api.Controllers;
+using Microsoft.AspNetCore.RateLimiting;
+
+namespace Microblog.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
+[EnableRateLimiting("auth")]
 public class AuthController(IAuthService authService, IConfiguration configuration)
     : ControllerBase
 {
-    [RateLimit(AppConstants.ApiRequestAction.Login)]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] UserRegisterDto request)
     {
@@ -21,7 +23,6 @@ public class AuthController(IAuthService authService, IConfiguration configurati
         return Ok(response);
     }
 
-    [RateLimit(AppConstants.ApiRequestAction.Login)]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] UserLoginDto request)
     {
@@ -41,7 +42,7 @@ public class AuthController(IAuthService authService, IConfiguration configurati
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Strict,
-            Expires = DateTimeOffset.UtcNow.AddDays(Convert.ToDouble(configuration["Jwt:ExpireMinutes"]))
+            Expires = DateTimeOffset.UtcNow.AddDays(Convert.ToDouble(configuration["Jwt:RefreshTokenExpireDays"]))
         });
 
         response.Success = true;
@@ -55,11 +56,10 @@ public class AuthController(IAuthService authService, IConfiguration configurati
     public async Task<IActionResult> RefreshToken()
     {
         var response = new CommonUtils.ControllerResponseParams();
-        var authToken = new AuthToken();
         string? token = Request.Cookies["refreshToken"];
         if (!string.IsNullOrWhiteSpace(token))
         {
-            authToken = await authService.RefreshAccessTokenAsync(token);
+            var authToken = await authService.RefreshAccessTokenAsync(token);
             if (authToken == null) throw new Exception("Invalid refresh token");
             Response.Cookies.Append("refreshToken", authToken.RefreshToken, new CookieOptions
             {

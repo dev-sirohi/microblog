@@ -1,0 +1,55 @@
+using Azure.Messaging.ServiceBus;
+using System.Text.Json;
+using Microblog.Api.Infrastructure.Observability;
+
+namespace Microblog.Api.Infrastructure.Messaging.AzureServiceBus;
+
+/// <summary>
+/// Publishes domain events to Azure Service Bus.
+/// Configured as an alternative to <see cref="Kafka.KafkaPublisher"/> via <c>Features:MessagingProvider = "azure-service-bus"</c>.
+/// </summary>
+public sealed class ServiceBusPublisher : IMessagePublisher, IAsyncDisposable
+{
+    private readonly ServiceBusClient _client;
+    private readonly ServiceBusSender _sender;
+    private readonly ILogger<ServiceBusPublisher> _logger;
+    private readonly string _queueName;
+
+    public ServiceBusPublisher(IConfiguration config, ILogger<ServiceBusPublisher> logger)
+    {
+        _logger = logger;
+        string connectionString = config["Azure:ServiceBusConnectionString"]
+            ?? throw new InvalidOperationException("Azure:ServiceBusConnectionString is required when using azure-service-bus messaging");
+        _queueName = config["Azure:ServiceBusQueueName"] ?? "microblog-events";
+        _client = new ServiceBusClient(connectionString);
+        _sender = _client.CreateSender(_queueName);
+    }
+
+    public async Task PublishAsync<T>(string topic, T message, CancellationToken ct = default) where T : class
+    {
+        string payload = JsonSerializer.Serialize(new { Topic = topic, Payload = message });
+        var sbMessage = new ServiceBusMessage(payload)
+        {
+            Subject = topic,
+            MessageId = Guid.NewGuid().ToString()
+        };
+
+        try
+        {
+            await _sender.SendMessageAsync(sbMessage, ct);
+            AppMetrics.MessagesPublished.WithLabels(topic).Inc();
+        }
+        catch (Exception ex)
+        {
+            AppMetrics.MessageErrors.WithLabels(topic).Inc();
+            _logger.LogError(ex, "Failed to publish Service Bus message for topic {Topic}", topic);
+            throw;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _sender.DisposeAsync();
+        await _client.DisposeAsync();
+    }
+}

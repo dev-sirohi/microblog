@@ -1,84 +1,97 @@
 import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import AuthApi from '../api/AuthApi';
-import * as MUI from '@mui/material';
-import type { UserProfile, RegisterRequest, ApiResponse } from '../interfaces/GlobalInterfaceExport';
-import { GlobalDialog } from '../globalDialogRef';
-import AppUtils from '../utils/AppUtils';
-import { AppConstants } from '../utils/enums';
+import Layout from '../components/Layout';
 
-export default function Register(): React.ReactNode {
-    const [pageForm, setPageForm] = React.useState({
-        username: "",
-        email: "",
-        password: "",
-    });
+export default function Register() {
+    const navigate = useNavigate();
+    const [form, setForm] = React.useState({ username: '', email: '', password: '' });
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
+        setLoading(true);
         try {
-            const registerRequest: RegisterRequest = {
-                username: pageForm.username,
-                email: pageForm.email,
-                password: pageForm.password,
-            };
-            const res: ApiResponse<UserProfile> = await AuthApi.registerUser(registerRequest);
-            if (AppUtils.isPositiveNumber(res.Data?.id)) {
-                // redirect to home page 
-            } else {
-                if (res.StatusCode === AppConstants.HttpStatusCode.FOUND) {
-                    // User already exists but needs to log in
-                    // redirect to Log In
-                }
+            const res = await AuthApi.registerUser({
+                username: form.username,
+                email: form.email,
+                password: form.password,
+            });
+            if (res.Data?.id) {
+                navigate('/login');
             }
         } catch (ex: any) {
-            GlobalDialog.showError(ex.message);
+            setError(ex.message ?? 'Registration failed');
+        } finally {
+            setLoading(false);
         }
-    }
+    };
+
+    const field = (label: string, key: keyof typeof form, type = 'text') => (
+        <div key={key}>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-muted)' }}>
+                {label}
+            </label>
+            <input
+                type={type}
+                required
+                value={form[key]}
+                onChange={e => setForm({ ...form, [key]: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                style={{
+                    backgroundColor: 'var(--color-bg)',
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-text)',
+                }}
+            />
+        </div>
+    );
 
     return (
-        <MUI.Container maxWidth="sm">
-            <MUI.Box mt={8}>
-                <MUI.Typography variant="h4" color="primary">
-                    Create Account
-                </MUI.Typography>
+        <Layout showNav={false}>
+            <div className="min-h-screen flex items-center justify-center -mt-6">
+                <div
+                    className="w-full max-w-sm rounded-2xl p-8 border"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+                >
+                    <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
+                        Create account
+                    </h1>
+                    <p className="text-sm mb-6" style={{ color: 'var(--color-muted)' }}>
+                        Join microblog today
+                    </p>
 
-                <MUI.Box component="form" mt={3} onSubmit={handleSubmit}>
-                    <MUI.TextField
-                        label="Username"
-                        fullWidth
-                        margin="normal"
-                        value={pageForm.username}
-                        onChange={(e) => setPageForm({ ...pageForm, username: e.target.value })}
-                    />
+                    {error && (
+                        <p className="text-sm mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,.1)', color: 'var(--color-danger)' }}>
+                            {error}
+                        </p>
+                    )}
 
-                    <MUI.TextField
-                        label="Email"
-                        fullWidth
-                        margin="normal"
-                        value={pageForm.email}
-                        onChange={(e) => setPageForm({ ...pageForm, email: e.target.value })}
-                    />
+                    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                        {field('Username', 'username')}
+                        {field('Email', 'email', 'email')}
+                        {field('Password', 'password', 'password')}
 
-                    <MUI.TextField
-                        label="Password"
-                        type="password"
-                        fullWidth
-                        margin="normal"
-                        value={pageForm.password}
-                        onChange={(e) => setPageForm({ ...pageForm, password: e.target.value })}
-                    />
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full py-2.5 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-60"
+                            style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
+                        >
+                            {loading ? 'Creating account…' : 'Create account'}
+                        </button>
+                    </form>
 
-                    <MUI.Button
-                        type="submit"
-                        variant="contained"
-                        color="primary"
-                        fullWidth
-                        sx={{ mt: 2 }}
-                    >
-                        Register
-                    </MUI.Button>
-                </MUI.Box>
-            </MUI.Box>
-        </MUI.Container>
+                    <p className="text-sm text-center mt-6" style={{ color: 'var(--color-muted)' }}>
+                        Already have an account?{' '}
+                        <Link to="/login" className="font-medium" style={{ color: 'var(--color-primary)' }}>
+                            Sign in
+                        </Link>
+                    </p>
+                </div>
+            </div>
+        </Layout>
     );
 }

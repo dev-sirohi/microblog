@@ -1,138 +1,50 @@
 import axios, { type AxiosRequestConfig } from 'axios';
-import type { ApiResponse, LoginRequest } from '../interfaces/GlobalInterfaceExport';
-import { GlobalDialog } from '../globalDialogRef';
-import AuthApi from './AuthApi';
-import * as DialogPresets from '../utils/GlobalDialogProvider/DialogPresets';
-import AppUtils from '../utils/AppUtils';
-import { AppConstants } from '../utils/Enums';
-
-/* Enums */
-export const ApiStatus = {
-    ACTIVE: "ACTIVE",
-    SUSPENDED: "SUSPENDED",
-} as const;
-export type TApiStatus = typeof ApiStatus[keyof typeof ApiStatus];
-
-/* Private methods */
-let _apiStatus: TApiStatus = ApiStatus.ACTIVE;
-let _queuedRequests: Array<() => Promise<void>> = [];
-
-function _pauseApiRequests() {
-    if (_apiStatus === ApiStatus.ACTIVE) {
-        _apiStatus = ApiStatus.SUSPENDED;
-    }
-}
-
-async function _resumeApiRequests() {
-    if (_apiStatus !== ApiStatus.SUSPENDED) return;
-
-    _apiStatus = ApiStatus.ACTIVE;
-
-    const queue = [..._queuedRequests];
-    _queuedRequests = [];
-
-    await Promise.all(queue.map(cb => cb()));
-}
+import type { ApiResponse } from '../interfaces/GlobalInterfaceExport';
 
 function _urlBuilder(baseUrl: string, queryParams?: Record<string, any>): string {
-    const url = new URL(baseUrl, import.meta.env.VITE_API_BASE_URL);
+    const url = new URL(baseUrl, import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5182/');
 
     if (queryParams) {
-        Object.keys(queryParams).forEach(key => {
-            const val = queryParams[key];
-            if (val !== undefined && val !== null) url.searchParams.append(key, val);
+        Object.entries(queryParams).forEach(([key, val]) => {
+            if (val !== undefined && val !== null) url.searchParams.append(key, String(val));
         });
     }
 
     return url.toString();
 }
 
-async function _validateAuthorization<T>(response: { data: ApiResponse<T> }): Promise<ApiResponse<T>> {
-    const data = response.data;
-
-    if (!_resolveApiResponseSuccess(data)) {
-        if (data.StatusCode === AppConstants.HttpStatusCode.UNAUTHORIZED) {
-            _pauseApiRequests();
-
-            await GlobalDialog.showDialog(
-                DialogPresets.LOGIN(async (params) => {
-                    let loginRequestObj: LoginRequest = {
-                        username: (!AppUtils.isValidEmail(params.identifier) ? params.identifier : ''),
-                        email: (AppUtils.isValidEmail(params.identifier) ? params.identifier : ''),
-                        password: "", // TODO
-                    };
-
-                    let loggedIn = false;
-                    try {
-                        await AuthApi.loginUser(loginRequestObj);
-                        loggedIn = true;
-                    } catch { }
-
-                    if (loggedIn) _resumeApiRequests();
-                })
-            );
-        }
+async function _handle<T>(response: { data: ApiResponse<T> }): Promise<ApiResponse<T>> {
+    if (response.data.StatusCode === 401) {
+        // Redirect to login on auth failure
+        window.location.href = '/login';
     }
-
-    response.data.Data = _resolveResponseData(data);
     return response.data;
 }
 
-function _resolveResponseData<T>(response: ApiResponse<T>): T {
-    return response.Data ?? {} as T;
-}
-
-function _resolveApiResponseSuccess(response: ApiResponse<any>): boolean {
-    return response.Success === true && response.StatusCode === 200;
-}
-
-/* PUBLIC methods */
 const API = {
     async post<T>(endpoint: string, params?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        if (_apiStatus === ApiStatus.SUSPENDED) {
-            return new Promise<ApiResponse<T>>((resolve, reject) => {
-                _queuedRequests.push(async () => {
-                    try {
-                        const result = await API.post<T>(endpoint, params, config);
-                        resolve(result);
-                    } catch (err) {
-                        reject(err);
-                    }
-                });
-            });
-        }
-
-        const url = endpoint.startsWith("http") ? endpoint : _urlBuilder(endpoint);
-        const response = await axios.post<ApiResponse<T>>(url, params, {
-            ...config,
-            //withCredentials: true,
-        });
-
-        return await _validateAuthorization(response);
+        const url = endpoint.startsWith('http') ? endpoint : _urlBuilder(endpoint);
+        const res = await axios.post<ApiResponse<T>>(url, params, { ...config, withCredentials: true });
+        return _handle(res);
     },
 
     async get<T>(endpoint: string, params?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        if (_apiStatus === ApiStatus.SUSPENDED) {
-            return new Promise<ApiResponse<T>>((resolve, reject) => {
-                _queuedRequests.push(async () => {
-                    try {
-                        const result = await API.get<T>(endpoint, config);
-                        resolve(result);
-                    } catch (err) {
-                        reject(err);
-                    }
-                });
-            });
-        }
+        const url = endpoint.startsWith('http') ? endpoint : _urlBuilder(endpoint, params);
+        const res = await axios.get<ApiResponse<T>>(url, { ...config, withCredentials: true });
+        return _handle(res);
+    },
 
-        const url = endpoint.startsWith("http") ? endpoint : _urlBuilder(endpoint, params);
-        const response = await axios.get<ApiResponse<T>>(url, {
-            ...config,
-            //withCredentials: true,
-        });
+    async patch<T>(endpoint: string, params?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+        const url = endpoint.startsWith('http') ? endpoint : _urlBuilder(endpoint);
+        const res = await axios.patch<ApiResponse<T>>(url, params, { ...config, withCredentials: true });
+        return _handle(res);
+    },
 
-        return await _validateAuthorization(response);
-    }
+    async delete<T>(endpoint: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+        const url = endpoint.startsWith('http') ? endpoint : _urlBuilder(endpoint);
+        const res = await axios.delete<ApiResponse<T>>(url, { ...config, withCredentials: true });
+        return _handle(res);
+    },
 };
 
 export default API;

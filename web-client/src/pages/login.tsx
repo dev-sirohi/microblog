@@ -1,81 +1,113 @@
 import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import AuthApi from '../api/AuthApi';
-import * as MUI from '@mui/material';
-import type { UserProfile, LoginRequest, ApiResponse } from '../interfaces/GlobalInterfaceExport';
-import { GlobalDialog } from '../globalDialogRef';
-import AppUtils from '../utils/AppUtils';
-import { AppConstants } from '../utils/enums';
+import Layout from '../components/Layout';
 
-export default function Login(): React.ReactNode {
-    const [pageForm, setPageForm] = React.useState({
-        username: "",
-        email: "",
-        password: "",
-    });
+export default function Login() {
+    const navigate = useNavigate();
+    const [form, setForm] = React.useState({ identifier: '', password: '' });
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
+        setLoading(true);
         try {
-            const loginRequest: LoginRequest = {
-                username: pageForm.username,
-                email: pageForm.email,
-                password: pageForm.password,
-            };
-            const res: ApiResponse<UserProfile> = await AuthApi.loginUser(loginRequest);
-            if (AppUtils.isPositiveNumber(res.Data?.id)) {
-                // redirect to home page 
+            const isEmail = form.identifier.includes('@');
+            const res = await AuthApi.loginUser({
+                username: isEmail ? '' : form.identifier,
+                email: isEmail ? form.identifier : '',
+                password: form.password,
+            });
+            if (res.Data?.id) {
+                navigate('/');
             } else {
-                // prompt error + Go to signup?
+                setError('Login failed. Check your credentials.');
             }
         } catch (ex: any) {
-            GlobalDialog.showError(ex.message);
+            setError(ex.message ?? 'Login failed');
+        } finally {
+            setLoading(false);
         }
-    }
+    };
 
     return (
-        <MUI.Container maxWidth="sm">
-            <MUI.Box mt={8}>
-                <MUI.Typography variant="h4" color="primary">
-                    Log In
-                </MUI.Typography>
+        <Layout showNav={false}>
+            <div className="min-h-screen flex items-center justify-center -mt-6">
+                <div
+                    className="w-full max-w-sm rounded-2xl p-8 border"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+                >
+                    <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
+                        Welcome back
+                    </h1>
+                    <p className="text-sm mb-6" style={{ color: 'var(--color-muted)' }}>
+                        Sign in to microblog
+                    </p>
 
-                <MUI.Box component="form" mt={3} onSubmit={handleSubmit}>
-                    <MUI.TextField
-                        label="Username"
-                        fullWidth
-                        margin="normal"
-                        value={pageForm.username}
-                        onChange={(e) => setPageForm({ ...pageForm, username: e.target.value })}
-                    />
+                    {error && (
+                        <p className="text-sm mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,.1)', color: 'var(--color-danger)' }}>
+                            {error}
+                        </p>
+                    )}
 
-                    <MUI.TextField
-                        label="Email"
-                        fullWidth
-                        margin="normal"
-                        value={pageForm.email}
-                        onChange={(e) => setPageForm({ ...pageForm, email: e.target.value })}
-                    />
+                    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                        <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-muted)' }}>
+                                Username or Email
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                value={form.identifier}
+                                onChange={e => setForm({ ...form, identifier: e.target.value })}
+                                className="w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2"
+                                style={{
+                                    backgroundColor: 'var(--color-bg)',
+                                    borderColor: 'var(--color-border)',
+                                    color: 'var(--color-text)',
+                                    '--tw-ring-color': 'var(--color-primary)',
+                                } as React.CSSProperties}
+                            />
+                        </div>
 
-                    <MUI.TextField
-                        label="Password"
-                        type="password"
-                        fullWidth
-                        margin="normal"
-                        value={pageForm.password}
-                        onChange={(e) => setPageForm({ ...pageForm, password: e.target.value })}
-                    />
+                        <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-muted)' }}>
+                                Password
+                            </label>
+                            <input
+                                type="password"
+                                required
+                                value={form.password}
+                                onChange={e => setForm({ ...form, password: e.target.value })}
+                                className="w-full px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2"
+                                style={{
+                                    backgroundColor: 'var(--color-bg)',
+                                    borderColor: 'var(--color-border)',
+                                    color: 'var(--color-text)',
+                                } as React.CSSProperties}
+                            />
+                        </div>
 
-                    <MUI.Button
-                        type="submit"
-                        variant="contained"
-                        color="primary"
-                        fullWidth
-                        sx={{ mt: 2 }}
-                    >
-                        Register
-                    </MUI.Button>
-                </MUI.Box>
-            </MUI.Box>
-        </MUI.Container>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full py-2.5 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-60"
+                            style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
+                        >
+                            {loading ? 'Signing in…' : 'Sign in'}
+                        </button>
+                    </form>
+
+                    <p className="text-sm text-center mt-6" style={{ color: 'var(--color-muted)' }}>
+                        Don't have an account?{' '}
+                        <Link to="/register" className="font-medium" style={{ color: 'var(--color-primary)' }}>
+                            Sign up
+                        </Link>
+                    </p>
+                </div>
+            </div>
+        </Layout>
     );
 }

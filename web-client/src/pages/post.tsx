@@ -1,61 +1,68 @@
-import React from "react";
-import type { Post } from "../interfaces/GlobalInterfaceExport";
-import { Box, Typography, Chip, Button } from "@mui/material";
-import CommentSection from "./commentsection";
+import React from 'react';
+import { useParams, Link } from 'react-router-dom';
+import type { Post } from '../interfaces/GlobalInterfaceExport';
+import PostApi from '../api/PostApi';
+import Layout from '../components/Layout';
+import PostCard from '../components/PostCard';
 
-interface PostProps {
-    post: Post;
-}
+export default function PostDetail() {
+    const { id } = useParams<{ id: string }>();
+    const [post, setPost] = React.useState<Post | null>(null);
+    const [recommendations, setRecommendations] = React.useState<Post[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
 
-export default function PostComponent({ post }: PostProps) {
-    const [showTopComments, setShowTopComments] = React.useState(false);
+    React.useEffect(() => {
+        if (!id) return;
+        (async () => {
+            setLoading(true);
+            try {
+                const [postRes, recRes] = await Promise.allSettled([
+                    PostApi.getPostById(Number(id)),
+                    PostApi.getRecommendations(Number(id)),
+                ]);
+                if (postRes.status === 'fulfilled') setPost(postRes.value.Data ?? null);
+                if (recRes.status === 'fulfilled') setRecommendations(recRes.value.Data ?? []);
+            } catch (ex: any) {
+                setError(ex.message ?? 'Failed to load post');
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [id]);
+
+    if (loading) return (
+        <Layout>
+            <p className="text-center py-12" style={{ color: 'var(--color-muted)' }}>Loading…</p>
+        </Layout>
+    );
+
+    if (error || !post) return (
+        <Layout>
+            <p className="text-center py-12" style={{ color: 'var(--color-danger)' }}>
+                {error ?? 'Post not found'}
+            </p>
+        </Layout>
+    );
 
     return (
-        <Box
-            sx={{
-                border: "1px solid #e0e0e0",
-                p: 2,
-                mb: 2,
-                borderRadius: 2,
-                background: "background.paper",
-                boxShadow: 1,
-            }}
-        >
-            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                <Typography fontWeight="bold">User {post.userId}</Typography>
-                <Typography color="text.secondary" fontSize={12}>
-                    {new Date(post.createdAt).toLocaleString()}
-                </Typography>
-            </Box>
+        <Layout>
+            <Link to="/" className="text-sm mb-4 inline-block hover:underline" style={{ color: 'var(--color-muted)' }}>
+                ← Back to feed
+            </Link>
 
-            <Typography mb={1}>{post.content}</Typography>
+            <PostCard post={post} showActions />
 
-            {post.medialUrl && (
-                <Box
-                    component="img"
-                    src={post.medialUrl}
-                    alt="post"
-                    sx={{ width: "100%", maxHeight: 350, objectFit: "cover", borderRadius: 1, mb: 1 }}
-                />
+            {recommendations.length > 0 && (
+                <section className="mt-8">
+                    <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--color-muted)' }}>
+                        Similar posts
+                    </h2>
+                    {recommendations.map(rec => (
+                        <PostCard key={rec.Id} post={rec} />
+                    ))}
+                </section>
             )}
-
-            <Box mb={1}>
-                {post.tags?.map((t, i) => (
-                    <Chip key={i} label={`#${t}`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
-                ))}
-            </Box>
-
-            {/* Top 3 Comments Preview */}
-            {post.topComments && post.comments.slice(0, 3).map((c, i) => (
-                <Typography key={i} variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>User {c.userId}:</strong> {c.content}
-                </Typography>
-            ))}
-
-            <Button size="small" onClick={() => setShowTopComments(true)}>
-                View All Comments
-            </Button>
-
-            {showTopComments && <CommentSection postId={post.id} onClose={() => setShowTopComments(false)} />}
-        </Box>
+        </Layout>
     );
+}

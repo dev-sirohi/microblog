@@ -1,4 +1,3 @@
-import { TextField } from "@mui/material";
 import type { DialogConfig } from "./DialogInterfaces";
 
 export const ERROR: (message: string) => DialogConfig = (message: string): DialogConfig => {
@@ -22,21 +21,19 @@ export const LOGIN: (callback: (params: any) => Promise<any>) => DialogConfig = 
         title: "Login Required",
         message: "Please log in to continue.",
         html: (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <TextField
-                    label="Identifier"
+            <div className="flex flex-col gap-3 mt-2">
+                <input
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Identifier"
                     name="identifier"
-                    variant="outlined"
                     required
-                    fullWidth
                 />
-                <TextField
-                    label="Password"
+                <input
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Password"
                     name="password"
                     type="password"
-                    variant="outlined"
                     required
-                    fullWidth
                 />
             </div>
         ),

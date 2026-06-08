@@ -1,7 +1,14 @@
-﻿namespace Microblog.Api.Services;
+using Microblog.Api.Features.Recommendations;
+using Microblog.Api.Infrastructure.Messaging;
+using Microblog.Api.Utils;
 
-public class PostService(AppDbContext dbContext, IConnectionMultiplexer connectionMultiplexer)
-    : IPostService
+namespace Microblog.Api.Services;
+
+public class PostService(
+    AppDbContext dbContext,
+    IConnectionMultiplexer connectionMultiplexer,
+    IServiceProvider serviceProvider,
+    GlobalConfig globalConfig) : IPostService
 {
     private readonly IDatabase _inMemoryDb = connectionMultiplexer.GetDatabase();
 
@@ -18,6 +25,13 @@ public class PostService(AppDbContext dbContext, IConnectionMultiplexer connecti
 
         await dbContext.Posts.AddAsync(newPost);
         await dbContext.SaveChangesAsync();
+
+        // Fire-and-forget: publish event + queue embedding computation
+        _ = Task.Run(async () =>
+        {
+            await TryPublishEventAsync(new PostCreatedEvent(newPost.Id, userId, content, newPost.CreatedAt));
+            await TryQueueEmbeddingAsync(newPost.Id, content);
+        });
 
         return newPost;
     }
@@ -94,8 +108,36 @@ public class PostService(AppDbContext dbContext, IConnectionMultiplexer connecti
 
         originalPostObj.Content = content;
         originalPostObj.ModifiedAt = DateTime.UtcNow;
+
+        // Re-queue embedding when content changes
+        _ = Task.Run(() => TryQueueEmbeddingAsync(postId, content));
+
         await dbContext.SaveChangesAsync();
 
         return originalPostObj;
+    }
+
+    private async Task TryPublishEventAsync(PostCreatedEvent evt)
+    {
+        try
+        {
+            var publisher = serviceProvider.GetService<IMessagePublisher>();
+            if (publisher is not null)
+                await publisher.PublishAsync("post.created", evt);
+        }
+        catch { /* messaging is best-effort */ }
+    }
+
+    private async Task TryQueueEmbeddingAsync(long postId, string content)
+    {
+        if (!globalConfig.EnableEmbeddings) return;
+        try
+        {
+            using var scope = serviceProvider.CreateScope();
+            var recommendations = scope.ServiceProvider.GetService<IRecommendationService>();
+            if (recommendations is not null)
+                await recommendations.ComputeAndStoreEmbeddingAsync(postId, content);
+        }
+        catch { /* embedding is non-critical */ }
     }
 }

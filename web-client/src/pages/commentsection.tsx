@@ -1,15 +1,12 @@
 import React from "react";
-import { Box, TextField, IconButton, Typography } from "@mui/material";
-import { Send } from "@mui/icons-material";
 import CommentApi from "../api/CommentApi";
 import type { GetCommentsRequest, Comment, AddCommentRequest } from "../interfaces/GlobalInterfaceExport";
 
 interface CommentSectionProps {
     postId: number;
-    onClose: () => void;
 }
 
-export default function CommentSection({ postId, onClose }: CommentSectionProps) {
+export default function CommentSection({ postId }: CommentSectionProps) {
     const [comments, setComments] = React.useState<Comment[]>([]);
     const [pageNumber, setPageNumber] = React.useState(1);
     const [loading, setLoading] = React.useState(false);
@@ -22,18 +19,12 @@ export default function CommentSection({ postId, onClose }: CommentSectionProps)
         if (loading || !hasMore) return;
         setLoading(true);
         try {
-            const getCommentsRequest: GetCommentsRequest = {
-                postId,
-                pageNumber,
-                pageSize: 10,
-            };
-            const res = await CommentApi.getComments(getCommentsRequest);
-            if (!res.Success) {
-                throw new Error(res.Message || "Unable to fetch comments");
-            }
-            const commentList: Comment[] = res.Data ?? [];
-            if (commentList.length === 0) setHasMore(false);
-            setComments(prev => [...prev, ...commentList]);
+            const req: GetCommentsRequest = { postId, pageNumber, pageSize: 10 };
+            const res = await CommentApi.getComments(req);
+            if (!res.Success) throw new Error(res.Message || "Unable to fetch comments");
+            const list: Comment[] = res.Data ?? [];
+            if (list.length === 0) setHasMore(false);
+            setComments(prev => [...prev, ...list]);
         } catch (ex) {
             console.error(ex);
         } finally {
@@ -55,16 +46,10 @@ export default function CommentSection({ postId, onClose }: CommentSectionProps)
     const addComment = async () => {
         if (!newComment.trim()) return;
         try {
-            const addCommentRequest: AddCommentRequest = {
-                postId,
-                content: "",
-            };
-            const res = await CommentApi.addComment(addCommentRequest);
-            if (!res.Success) {
-                throw new Error(res.Message || "Unable to add comment");
-            }
-            const newComment: Comment = res.Data as Comment;
-            setComments(prev => [newComment, ...prev]);
+            const req: AddCommentRequest = { postId, content: newComment };
+            const res = await CommentApi.addComment(req);
+            if (!res.Success) throw new Error(res.Message || "Unable to add comment");
+            setComments(prev => [res.Data as Comment, ...prev]);
             setNewComment("");
         } catch (ex) {
             console.error(ex);
@@ -72,31 +57,46 @@ export default function CommentSection({ postId, onClose }: CommentSectionProps)
     };
 
     return (
-        <Box sx={{ p: 2, maxHeight: "70vh", overflowY: "auto" }}>
-            <Typography variant="h6" mb={1}>Comments</Typography>
+        <div className="p-4 max-h-[70vh] overflow-y-auto">
+            <h3 className="text-base font-semibold mb-3" style={{ color: "var(--color-text)" }}>
+                Comments
+            </h3>
 
-            {comments.map((c, i) => (
-                <Box key={i} sx={{ mb: 1 }}>
-                    <Typography variant="body2"><strong>User {c.userId}:</strong> {c.content}</Typography>
-                    <Typography variant="caption" color="text.secondary">Likes: {c.likes}</Typography>
-                </Box>
-            ))}
+            <div className="space-y-3 mb-4">
+                {comments.map((c, i) => (
+                    <div key={i} className="text-sm" style={{ color: "var(--color-text)" }}>
+                        <span className="font-medium">User {c.userId}: </span>
+                        <span>{c.content}</span>
+                        <div className="text-xs mt-0.5" style={{ color: "var(--color-muted)" }}>
+                            {c.likes} likes
+                        </div>
+                    </div>
+                ))}
+            </div>
 
             <div ref={loaderRef} />
+            {loading && <p className="text-xs text-center py-2" style={{ color: "var(--color-muted)" }}>Loading…</p>}
 
-            <Box sx={{ display: "flex", mt: 2 }}>
-                <TextField
-                    fullWidth
-                    variant="outlined"
-                    size="small"
+            <div className="flex gap-2 mt-3">
+                <input
+                    className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                        background: "var(--color-surface)",
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text)"
+                    }}
                     placeholder="Write a comment..."
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addComment()}
                 />
-                <IconButton onClick={addComment} color="primary">
-                    <Send />
-                </IconButton>
-            </Box>
-        </Box>
+                <button
+                    onClick={addComment}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                    Send
+                </button>
+            </div>
+        </div>
     );
 }

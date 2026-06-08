@@ -5,11 +5,11 @@ export const GlobalDialog = {
         throw new Error("GlobalDialogProvider is not mounted");
     },
 
-    showError: async (message: string): Promise<void> => {
+    showError: async (_message: string): Promise<void> => {
         throw new Error("GlobalDialogProvider is not mounted");
     },
 
-    showToast: async (message: string): Promise<void> => {
+    showToast: async (_message: string): Promise<void> => {
         throw new Error("GlobalDialogProvider is not mounted");
     }
 };
