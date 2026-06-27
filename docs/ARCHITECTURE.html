@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Microblog &mdash; Product &amp; Architecture Deck</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="microblog--product--architecture-deck">Microblog — Product &amp; Architecture Deck</h1>
+<blockquote>
+<p>A slide-style walkthrough of the Microblog platform: what it is, why it exists, how
+it's built, the trade-offs behind each choice, how to deploy it, and the metrics that
+tell us whether it's healthy. Each <code>---</code> is a &quot;slide&quot;. All diagrams are Mermaid and
+render natively on GitHub / VS Code.</p>
+</blockquote>
+<hr>
+<h2 id="slide-1--what-is-this-product">Slide 1 — What is this product?</h2>
+<p><strong>Microblog</strong> is a Twitter/X-style microblogging platform: users register, post short
+content, follow each other, like posts, comment, and get embedding-based &quot;more like this&quot;
+recommendations.</p>
+<p>But the <em>product</em> is not the feature list — the feature list is deliberately small. The
+real product is a <strong>reference implementation of a read-heavy, write-amplified social
+backend</strong> that shows how to keep a feed fast and cheap under load without lying to users
+about durability.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Domain</strong></td>
+<td>Social microblogging (posts, follows, likes, comments)</td>
+</tr>
+<tr>
+<td><strong>Shape of load</strong></td>
+<td>Read-heavy, spiky writes (likes/follows come in bursts)</td>
+</tr>
+<tr>
+<td><strong>Core thesis</strong></td>
+<td>Serve hot paths from Redis, persist truth in SQL Server, reconcile asynchronously</td>
+</tr>
+<tr>
+<td><strong>Audience</strong></td>
+<td>Backend engineers studying caching / eventual-consistency / scale trade-offs</td>
+</tr>
+<tr>
+<td><strong>Stack</strong></td>
+<td><a href="http://ASP.NET">ASP.NET</a> Core (.NET 10) · SQL Server · Redis · optional Kafka / Azure Service Bus · OpenAI embeddings</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="slide-2--why-does-it-exist-dev-scope--intent">Slide 2 — Why does it exist? (Dev scope &amp; intent)</h2>
+<p>Most CRUD tutorials write straight to a database and call it done. That falls over the
+moment a single post gets liked 50,000 times in a minute — every like becomes a row
+insert and a <code>COUNT(*)</code>.</p>
+<p>This project exists to explore the <strong>opposite discipline</strong>: treat the database as the
+<em>source of truth</em> but never let it sit on the critical path of a high-frequency action.</p>
+<pre><code class="language-mermaid">flowchart LR
+    A[&quot;Naive design&lt;br/&gt;write every like to SQL&quot;] --&gt;|&quot;viral post&quot;| B[&quot;DB write storm&lt;br/&gt;locks, COUNT(*) scans&quot;]
+    B --&gt; C[&quot;Latency spikes&lt;br/&gt;timeouts&quot;]
+    D[&quot;This project&lt;br/&gt;like -&gt; Redis -&gt; async batch -&gt; SQL&quot;] --&gt;|&quot;viral post&quot;| E[&quot;O(1) Redis ops&lt;br/&gt;batched inserts&quot;]
+    E --&gt; F[&quot;Flat latency&lt;br/&gt;durable eventually&quot;]
+    style D fill:#1b4,stroke:#093,color:#fff
+    style F fill:#1b4,stroke:#093,color:#fff
+    style B fill:#b22,stroke:#600,color:#fff
+    style C fill:#b22,stroke:#600,color:#fff
+</code></pre>
+<p><strong>In scope:</strong> caching strategy, background sync, rate limiting, observability, pluggable
+messaging/storage, AI recommendations.
+<strong>Deliberately thin:</strong> the home feed endpoint is a stub, the UI is minimal — because the
+point is the <em>backend mechanics</em>, not pixels.</p>
+<hr>
+<h2 id="slide-3--the-10000-ft-system-map">Slide 3 — The 10,000-ft system map</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Client[&quot;Client tier&quot;]
+        RC[&quot;React / TS SPA&lt;br/&gt;(web-client)&quot;]
+        LT[&quot;NBomber load suite&lt;br/&gt;(StressTestSuite)&quot;]
+    end
+
+    subgraph API[&quot;ASP.NET Core API (.NET 10)&quot;]
+        MW[&quot;Middleware pipeline&lt;br/&gt;exception · metrics · rate limit · auth&quot;]
+        CT[&quot;Controllers (thin HTTP)&quot;]
+        SV[&quot;Service layer (business logic)&quot;]
+        BG[&quot;BackgroundSyncService&lt;br/&gt;(IHostedService)&quot;]
+    end
+
+    subgraph Data[&quot;State tier&quot;]
+        RE[(&quot;Redis&lt;br/&gt;cache · queues · counters · locks&quot;)]
+        SQL[(&quot;SQL Server&lt;br/&gt;source of truth&quot;)]
+    end
+
+    subgraph Optional[&quot;Pluggable infra (feature-flagged)&quot;]
+        MQ[&quot;Kafka / Azure Service Bus&quot;]
+        ST[&quot;Local FS / Azure Blob&quot;]
+        AI[&quot;OpenAI embeddings&quot;]
+    end
+
+    subgraph Obs[&quot;Observability&quot;]
+        PR[&quot;Prometheus&quot;]
+        GR[&quot;Grafana&quot;]
+        OT[&quot;OTLP collector&quot;]
+        LG[&quot;Serilog files&quot;]
+    end
+
+    RC --&gt; MW
+    LT --&gt; MW
+    MW --&gt; CT --&gt; SV
+    SV &lt;--&gt; RE
+    SV &lt;--&gt; SQL
+    SV -.fire-and-forget.-&gt; MQ
+    SV --&gt; ST
+    SV --&gt; AI
+    RE &lt;--&gt; BG
+    BG --&gt; SQL
+    API --&gt; PR &amp; OT &amp; LG
+    PR --&gt; GR
+</code></pre>
+<p><strong>One rule to read the whole system by:</strong> <em>fast-path writes touch Redis; the
+<code>BackgroundSyncService</code> drains Redis into SQL Server on a timer.</em></p>
+<hr>
+<h2 id="slide-4--layered-architecture--why-its-shaped-this-way">Slide 4 — Layered architecture &amp; why it's shaped this way</h2>
+<pre><code class="language-mermaid">flowchart TB
+    C[&quot;Controllers/&lt;br/&gt;HTTP only — no logic&quot;] --&gt; S[&quot;Services/&lt;br/&gt;one service per domain&quot;]
+    S --&gt; I[&quot;Infrastructure/&lt;br/&gt;Caching · RateLimiting · Messaging · Storage · Observability&quot;]
+    S --&gt; D[&quot;Database/&lt;br/&gt;EF Core AppDbContext&quot;]
+    S --&gt; U[&quot;Utils/&lt;br/&gt;AppConstants · InMemoryUtils · GlobalConfig&quot;]
+    F[&quot;Features/Recommendations/&lt;br/&gt;embeddings + cosine similarity&quot;] --&gt; I
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Responsibility</th>
+<th>Why this boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Controllers</strong></td>
+<td>Parse request, call one service, wrap response</td>
+<td>Keeps HTTP concerns out of logic; trivial to test/load-test</td>
+</tr>
+<tr>
+<td><strong>Services</strong></td>
+<td>All business rules, cache vs DB decisions</td>
+<td>One service per domain (Post, Comment, Auth, UserFollow, UserLike, Media, UserProfile) = clear ownership</td>
+</tr>
+<tr>
+<td><strong>Infrastructure</strong></td>
+<td>Cross-cutting tech behind interfaces</td>
+<td>Lets messaging/storage be swapped via config, not code</td>
+</tr>
+<tr>
+<td><strong>Utils/AppConstants</strong></td>
+<td>Redis key shapes + operation enums</td>
+<td>Single place to audit cache keys — <strong>check here before adding new ones</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Convention worth knowing: every controller returns <code>CommonUtils.ControllerResponseParams</code>
+(<code>Success</code> / <code>Message</code> / <code>Data</code>) so the frontend and load tests parse one shape everywhere.</p>
+</blockquote>
+<hr>
+<h2 id="slide-5--the-signature-pattern-eventual-consistency-via-redis-queues">Slide 5 — The signature pattern: eventual consistency via Redis queues</h2>
+<p>This is the heart of the project. Walk a <strong>like</strong> through the system:</p>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant U as Client
+    participant C as UserLikeController
+    participant S as UserLikeService
+    participant R as Redis
+    participant B as BackgroundSyncService
+    participant DB as SQL Server
+
+    U-&gt;&gt;C: POST /api/UserLike/like/{postId}
+    C-&gt;&gt;S: LikePostAsync(userId, postId)
+    Note over S,R: Fast path — all O(1) Redis ops
+    S-&gt;&gt;R: SortedSetAdd post:{id} likers (+TTL 12h)
+    S-&gt;&gt;R: SortedSetAdd user recently-liked
+    S-&gt;&gt;R: ListRightPush userLikes:eventsQueue (LikeEvent)
+    S--&gt;&gt;C: return immediately
+    C--&gt;&gt;U: 200 OK  (like is &quot;done&quot; from user's POV)
+
+    loop every ~1s (poll) or on overflow (pub/sub)
+        B-&gt;&gt;R: read batch from userLikes:eventsQueue
+        B-&gt;&gt;B: dedupe by (UserId,PostId), keep last action
+        B-&gt;&gt;DB: AddRange(UserLike) + SaveChanges (batched)
+    end
+</code></pre>
+<p><strong>Why:</strong> a like must feel instant and survive virality. Redis absorbs the burst at O(1);
+SQL gets <strong>batched, de-duplicated</strong> inserts instead of one row per click.</p>
+<p><strong>Safety nets in the code:</strong></p>
+<ul>
+<li>If Redis throws, <code>LikePostAsync</code> falls back to a <strong>direct DB write</strong> (<code>LikePostDbFallbackAsync</code>) — correctness over speed.</li>
+<li>A <strong>queue-overflow guard</strong> (<code>ClearQueueOverflow</code>) trims the event list when it nears <code>CacheMemoryLimit</code>, and a Redis <strong>pub/sub channel</strong> (<code>FlushAndClearQueueOverflow</code>) can trigger an out-of-band flush instead of waiting for the next poll.</li>
+<li>The background drain holds a per-operation <code>SemaphoreSlim(1,1)</code> so two polls never process the same queue concurrently.</li>
+</ul>
+<hr>
+<h2 id="slide-6--reads-counts-and-the-consistency-contract">Slide 6 — Reads, counts, and the consistency contract</h2>
+<pre><code class="language-mermaid">flowchart TD
+    Q[&quot;GetPostLikesAndIsLikedByUser&quot;] --&gt; CK{&quot;Redis sorted set&lt;br/&gt;has the post?&quot;}
+    CK --&gt;|yes| HIT[&quot;Return count + membership&lt;br/&gt;from Redis (fast, may be ahead of SQL)&quot;]
+    CK --&gt;|&quot;no / empty / throws&quot;| MISS[&quot;Fallback to SQL COUNT&quot;]
+    MISS --&gt; REPOP[&quot;Re-populate Redis from SQL&lt;br/&gt;(bounded by CacheMemoryLimit)&quot;]
+    REPOP --&gt; RET[&quot;Return SQL truth&quot;]
+</code></pre>
+<p><strong>The contract to keep straight when reading this code:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Write path</th>
+<th>Durability at return</th>
+<th>Read source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Like / Unlike</strong></td>
+<td>Redis first, async → SQL</td>
+<td>Eventually consistent (seconds)</td>
+<td>Redis, SQL on miss</td>
+</tr>
+<tr>
+<td><strong>Follow / Unfollow</strong></td>
+<td><strong>SQL first</strong> (synchronous <code>SaveChanges</code>), then Redis sets updated</td>
+<td>Strongly consistent</td>
+<td>Redis sets, SQL on miss</td>
+</tr>
+<tr>
+<td><strong>Post create/update</strong></td>
+<td>SQL synchronous; event + embedding fire-and-forget</td>
+<td>Strong for the post; async for side-effects</td>
+<td>SQL</td>
+</tr>
+<tr>
+<td><strong>Auth tokens</strong></td>
+<td>SQL for refresh tokens; Redis for blacklist</td>
+<td>Strong</td>
+<td>both</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ Note for the team: the README describes the queue pattern for <em>both</em> likes and
+follows, but in the current code <strong>only likes go through the background queue</strong>.
+Follows are dual-written (SQL then cache). Worth deciding whether that's intended
+before load-testing follow-heavy scenarios.</p>
+</blockquote>
+<hr>
+<h2 id="slide-7--authentication-flow">Slide 7 — Authentication flow</h2>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant U as Client
+    participant A as AuthController
+    participant S as AuthService
+    participant DB as SQL Server
+    participant R as Redis
+
+    U-&gt;&gt;A: POST /login (user/email + password)
+    A-&gt;&gt;S: LoginAsync
+    S-&gt;&gt;DB: match user by hash
+    S-&gt;&gt;DB: persist refresh token (7d)
+    S--&gt;&gt;A: access (60m) + refresh (7d)
+    A--&gt;&gt;U: Set-Cookie httpOnly·Secure·SameSite=Strict
+
+    Note over U,A: later — access token expires
+    U-&gt;&gt;A: POST /refreshtoken (cookie)
+    A-&gt;&gt;S: RefreshAccessTokenAsync
+    S-&gt;&gt;R: is refresh token blacklisted?
+    S-&gt;&gt;DB: rotate — delete old, issue new
+    S--&gt;&gt;U: new refresh cookie
+
+    U-&gt;&gt;A: POST /logout
+    A-&gt;&gt;S: blacklist token in Redis until expiry + delete row
+</code></pre>
+<p><strong>Choices &amp; why:</strong></p>
+<ul>
+<li><strong>JWT in HTTP-only / Secure / SameSite=Strict cookies</strong> — defends against XSS token theft and CSRF, and the SPA never has to handle raw tokens (the Axios wrapper just retries on 401).</li>
+<li><strong>Refresh-token rotation + Redis blacklist</strong> — a stolen refresh token has a short, revocable life; blacklist TTL is bounded by the token's own expiry so Redis self-cleans.</li>
+<li><strong>Symmetric HMAC-SHA256 signing key</strong> — simple for a single-service deployment; would move to asymmetric keys / Key Vault for multi-service.</li>
+</ul>
+<hr>
+<h2 id="slide-8--rate-limiting-distributed-per-endpoint">Slide 8 — Rate limiting (distributed, per-endpoint)</h2>
+<pre><code class="language-mermaid">flowchart LR
+    REQ[&quot;Request&quot;] --&gt; RL{&quot;Rate limit policy&lt;br/&gt;by endpoint&quot;}
+    RL --&gt;|auth| P1[&quot;5 / min&quot;]
+    RL --&gt;|create-post| P2[&quot;20 / min&quot;]
+    RL --&gt;|feed| P3[&quot;60 / min&quot;]
+    P1 &amp; P2 &amp; P3 --&gt; RD[&quot;Redis fixed-window&lt;br/&gt;INCR + EXPIRE&quot;]
+    RD --&gt; OK{&quot;count &lt;= limit?&quot;}
+    OK --&gt;|yes| PASS[&quot;allow&quot;]
+    OK --&gt;|no| DENY[&quot;429 + Retry-After: 60&quot;]
+</code></pre>
+<ul>
+<li><strong>Redis-backed fixed window</strong> (<code>RedisFixedWindowRateLimiter</code>) so the limit is <strong>shared across all API instances</strong>, not per-process. The counter is a single <code>INCR</code>; the first hit sets <code>EXPIRE</code> = window.</li>
+<li><strong>Partition key = userId when authenticated, else client IP</strong> — authenticated users get their own bucket; anonymous traffic is throttled per IP.</li>
+<li><strong>Disabled entirely in Development</strong> (<code>GlobalLimiter = NoLimiter</code>) so local dev and load tests aren't throttled by accident — <em>important for the NBomber work: run the API in Production mode to exercise limits, Development mode to find raw ceilings.</em></li>
+</ul>
+<hr>
+<h2 id="slide-9--background-processing-engine">Slide 9 — Background processing engine</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph BSS[&quot;BackgroundSyncService (IHostedService)&quot;]
+        direction TB
+        SUB[&quot;Subscribe pub/sub:&lt;br/&gt;FlushAndClearQueueOverflow&quot;]
+        POLL[&quot;Poll loop every 1s&quot;]
+        SUB --&gt; FLUSH[&quot;BeginFlush&quot;]
+        POLL --&gt; FLUSH
+        FLUSH --&gt; SEM{&quot;per-op SemaphoreSlim&lt;br/&gt;free?&quot;}
+        SEM --&gt;|no| SKIP[&quot;skip (already running)&quot;]
+        SEM --&gt;|yes| RUN[&quot;RunOperationAsync&quot;]
+        RUN --&gt; SW[&quot;SyncWorkerService.SyncPostLikes()&lt;br/&gt;dedupe + batch insert&quot;]
+    end
+    SW --&gt; DB[(&quot;SQL Server&quot;)]
+</code></pre>
+<p><strong>Design decisions to highlight:</strong></p>
+<ul>
+<li><strong>One hosted service, switch on operation type.</strong> Today only <code>LIKE_EVENT_*</code> is wired to real work; the other enum branches are intentional placeholders for follows/media/etc. — the scaffolding is there to extend.</li>
+<li><strong>Token-secret guard:</strong> <code>SyncWorkerService</code> refuses to run unless handed a secret <code>Guid</code> that only <code>BackgroundSyncService</code> holds. This stops other code from accidentally triggering raw DB drains (which, unguarded, could crash the app).</li>
+<li><strong>Two triggers, one drain:</strong> the timer handles steady state; the pub/sub channel handles <em>overflow</em> bursts so the queue can't grow unbounded between ticks.</li>
+<li><strong>Batch + dedupe before insert:</strong> rapid like→unlike→like collapses to the last action per <code>(user, post)</code> — fewer rows, no thrash.</li>
+</ul>
+<hr>
+<h2 id="slide-10--pluggable-infrastructure-config-over-code">Slide 10 — Pluggable infrastructure (config over code)</h2>
+<p>Three subsystems are swapped by <code>appsettings.json</code> feature flags, resolved once at startup
+in <code>Program.cs</code>:</p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Flags[&quot;Features.* flags&quot;]
+        F1[&quot;MessagingProvider:&lt;br/&gt;none / kafka / azure-service-bus&quot;]
+        F2[&quot;EnableAzureStorage:&lt;br/&gt;true / false&quot;]
+        F3[&quot;EnableEmbeddings:&lt;br/&gt;true / false&quot;]
+    end
+    F1 --&gt; M1[&quot;KafkaPublisher + KafkaConsumerService&quot;]
+    F1 --&gt; M2[&quot;ServiceBusPublisher + ServiceBusConsumerService&quot;]
+    F2 --&gt; S1[&quot;AzureBlobStorageService&quot;]
+    F2 --&gt; S2[&quot;LocalStorageService&quot;]
+    F3 --&gt; E1[&quot;OpenAI embeddings + RecommendationService&quot;]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Subsystem</th>
+<th>Abstraction</th>
+<th>Implementations</th>
+<th>Why pluggable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Messaging</td>
+<td><code>IMessagePublisher</code> + consumer hosted service</td>
+<td>Kafka, Azure Service Bus</td>
+<td>Durable event delivery with DLQ + retry; pick infra per environment</td>
+</tr>
+<tr>
+<td>Storage</td>
+<td><code>IStorageService</code></td>
+<td>Local FS, Azure Blob</td>
+<td>Dev runs local; prod runs blob — same code</td>
+</tr>
+<tr>
+<td>Recommendations</td>
+<td><code>IEmbeddingProvider</code></td>
+<td>OpenAI (HuggingFace stub)</td>
+<td>Off by default (needs API key + cost)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Messaging is best-effort &amp; fire-and-forget</strong> from the request path (<code>_ = Task.Run(...)</code>),
+so the API never blocks on a broker. The consumer side adds <strong>retry with backoff → DLQ</strong>
+for durability.</p>
+<hr>
+<h2 id="slide-11--ai-recommendations-optional">Slide 11 — AI recommendations (optional)</h2>
+<pre><code class="language-mermaid">flowchart LR
+    CP[&quot;Post created/updated&quot;] --&gt;|fire-and-forget| EMB[&quot;OpenAI embedding&lt;br/&gt;(1536 floats)&quot;]
+    EMB --&gt; STORE[&quot;store as bytes on Post.EmbeddingData&quot;]
+    REQ[&quot;GET /posts/{id}/recommendations&quot;] --&gt; CACHE{&quot;Redis cached?&lt;br/&gt;10 min TTL&quot;}
+    CACHE --&gt;|hit| OUT[&quot;return&quot;]
+    CACHE --&gt;|miss| SIM[&quot;load candidates w/ embeddings&lt;br/&gt;cosine similarity in-memory&lt;br/&gt;top-N&quot;]
+    SIM --&gt; OUT
+</code></pre>
+<ul>
+<li>Embeddings are stored as <strong>raw float bytes on the <code>Post</code> row</strong> (compact, no extra table).</li>
+<li>Similarity is an <strong>in-memory cosine scan</strong> — fine for a demo, explicitly flagged in code
+to be replaced by <strong>pgvector / Azure AI Search</strong> at real scale.</li>
+<li>Results cached via the generic <strong>cache-aside <code>ICacheService</code> with RedLock</strong> stampede
+protection (one computer recomputes; others wait or read-through).</li>
+</ul>
+<hr>
+<h2 id="slide-12--observability-how-we-know-its-alive">Slide 12 — Observability (how we know it's alive)</h2>
+<pre><code class="language-mermaid">flowchart LR
+    API[&quot;API&quot;] --&gt;|&quot;/metrics&quot;| PROM[&quot;Prometheus&lt;br/&gt;15d retention&quot;]
+    PROM --&gt; GRAF[&quot;Grafana :3001&quot;]
+    API --&gt;|OTLP :4317| COL[&quot;OTel collector&quot;]
+    API --&gt;|files| SER[&quot;Serilog logs/*.log&quot;]
+    API --&gt;|&quot;/health /ready /live&quot;| K8S[&quot;orchestrator probes&quot;]
+</code></pre>
+<p><strong>Instrumented out of the box:</strong></p>
+<ul>
+<li><strong>Prometheus metrics</strong> at <code>/metrics</code> (HTTP server metrics + custom <code>microblog_*</code> counters/gauges).</li>
+<li><strong>OpenTelemetry traces + metrics</strong> (<a href="http://ASP.NET">ASP.NET</a> Core + HttpClient instrumentation) exported via OTLP.</li>
+<li><strong>Serilog</strong> to console + daily rolling files, enriched with machine name &amp; thread id.</li>
+<li><strong>Health checks</strong>: <code>/health</code> (all), <code>/health/ready</code> (SQL + Redis tagged <code>ready</code>), <code>/health/live</code>.</li>
+</ul>
+<hr>
+<h2 id="slide-13--custom-product-metrics--what-they-tell-you">Slide 13 — Custom product metrics &amp; what they tell you</h2>
+<p>These are the <code>microblog_*</code> series defined in <code>AppMetrics</code> — the dashboard you'd watch
+during a load test:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>What it answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>microblog_cache_hits_total</code> / <code>_misses_total</code></td>
+<td>counter (by op)</td>
+<td>Is the cache actually absorbing reads?</td>
+</tr>
+<tr>
+<td><code>microblog_background_sync_queue_depth</code></td>
+<td>gauge</td>
+<td>Is the drain keeping up, or is the like queue growing?</td>
+</tr>
+<tr>
+<td><code>microblog_background_sync_processed_total</code> / <code>_errors_total</code></td>
+<td>counter</td>
+<td>Throughput &amp; failure rate of the SQL drain</td>
+</tr>
+<tr>
+<td><code>microblog_posts_created_total</code>, <code>microblog_post_likes_total</code></td>
+<td>counter</td>
+<td>Business throughput</td>
+</tr>
+<tr>
+<td><code>microblog_embeddings_generated_total</code> / <code>_errors_total</code></td>
+<td>counter</td>
+<td>AI subsystem health</td>
+</tr>
+<tr>
+<td><code>microblog_messages_published_total</code> / <code>_errors_total</code></td>
+<td>counter (by topic)</td>
+<td>Broker health + DLQ pressure</td>
+</tr>
+<tr>
+<td><code>microblog_active_sessions</code></td>
+<td>gauge</td>
+<td>Approx concurrent authenticated users</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The single most important one for this architecture is <strong><code>background_sync_queue_depth</code></strong>:
+if it climbs without bound under load, Redis is outrunning the SQL drain and you've found
+a real scaling limit.</p>
+</blockquote>
+<hr>
+<h2 id="slide-14--how-to-deploy">Slide 14 — How to deploy</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Compose[&quot;docker-compose up (from src/)&quot;]
+        A[&quot;microblog.api :8080&quot;]
+        Q[(&quot;sqlserver :1433&quot;)]
+        R[(&quot;redis :6379&quot;)]
+        K[&quot;kafka + zookeeper :9092&quot;]
+        P[&quot;prometheus :9090&quot;]
+        G[&quot;grafana :3001&quot;]
+    end
+    A --&gt; Q &amp; R &amp; K
+    A --&gt; P
+    P --&gt; G
+    A -.auto-migrate on startup.-&gt; Q
+</code></pre>
+<p><strong>Local (no Docker):</strong> run SQL Server + Redis, set connection strings in
+<code>appsettings.Development.json</code>, then <code>dotnet run --launch-profile https</code> from
+<code>src/Microblog.Api</code> (<a href="https://localhost:7282">https://localhost:7282</a>).</p>
+<p><strong>Full stack:</strong> <code>docker-compose up</code> from <code>src/</code> brings up API + SQL + Redis + Kafka +
+Prometheus + Grafana. The API <strong>auto-applies EF migrations on startup</strong>
+(<code>db.Database.MigrateAsync()</code>), so a fresh database is provisioned automatically.</p>
+<p><strong>Production hardening already wired:</strong></p>
+<ul>
+<li><code>ASPNETCORE_ENVIRONMENT=Production</code> → rate limiting <strong>on</strong>, CORS locked to <code>localhost:3000</code> (change to your domain).</li>
+<li><strong>Azure Key Vault</strong> loads first and overrides <code>appsettings</code> when <code>Azure:KeyVaultUri</code> is set — <em>no secrets in config files.</em></li>
+<li><strong>Polly</strong> standard resilience (retry + circuit breaker + timeout) on outbound OpenAI calls.</li>
+<li>HTTPS redirection, health probes for <code>ready</code>/<code>live</code> orchestration.</li>
+</ul>
+<p><strong>Config that must change before real prod:</strong> the JWT signing key, SQL <code>sa</code> password, and
+CORS origin are demo values in <code>appsettings.json</code> — move them to Key Vault / env vars.</p>
+<hr>
+<h2 id="slide-15--expected-metrics--slo-targets-the-load-test-scoreboard">Slide 15 — Expected metrics &amp; SLO targets (the load-test scoreboard)</h2>
+<blockquote>
+<p>These are <strong>target hypotheses</strong> to validate with the NBomber suite — not measured
+results. They define &quot;the limit&quot; we're about to go find.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Healthy target</th>
+<th>Warning</th>
+<th>Hard limit signal</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Like p95 latency (Redis fast path)</td>
+<td>&lt; 25 ms</td>
+<td>25–100 ms</td>
+<td>&gt; 100 ms → Redis saturated</td>
+</tr>
+<tr>
+<td>Read p95 (post/feed, cache hit)</td>
+<td>&lt; 50 ms</td>
+<td>50–200 ms</td>
+<td>&gt; 200 ms</td>
+</tr>
+<tr>
+<td>Post-create p95 (SQL synchronous)</td>
+<td>&lt; 150 ms</td>
+<td>150–500 ms</td>
+<td>&gt; 500 ms → SQL write pressure</td>
+</tr>
+<tr>
+<td>Error rate</td>
+<td>&lt; 0.1%</td>
+<td>0.1–1%</td>
+<td>&gt; 1%</td>
+</tr>
+<tr>
+<td><code>background_sync_queue_depth</code></td>
+<td>stable / drains each tick</td>
+<td>slowly rising</td>
+<td>unbounded growth → drain can't keep up</td>
+</tr>
+<tr>
+<td>Cache hit ratio (likes/reads)</td>
+<td>&gt; 90%</td>
+<td>70–90%</td>
+<td>&lt; 70% → keys expiring too fast</td>
+</tr>
+<tr>
+<td>Rate-limit 429s (prod mode)</td>
+<td>only above policy limits</td>
+<td>—</td>
+<td>429s below limit → misconfig</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Throughput intuition for the architecture:</strong></p>
+<ul>
+<li>Likes should scale far higher than posts — they're O(1) Redis ops vs synchronous SQL inserts.</li>
+<li>The bottleneck is expected to migrate from the API → SQL drain (<code>SyncWorkerService</code>) as like volume rises; watch queue depth and batch insert latency together.</li>
+</ul>
+<hr>
+<h2 id="slide-16--known-sharp-edges-be-honest-before-stress-testing">Slide 16 — Known sharp edges (be honest before stress-testing)</h2>
+<p>A load test is most useful when you already suspect where it'll break:</p>
+<ol>
+<li><strong>Follows aren't queued</strong> — they do a synchronous <code>SaveChanges</code> per call, so follow
+storms hit SQL directly (unlike likes). Expect follows to cap lower than likes.</li>
+<li><strong><code>GetFollowerIdList</code> queries <code>FollowerId</code></strong> to build the <em>followers</em> set — looks like
+a copy/paste of the following query. Verify before trusting follower counts under load.</li>
+<li><strong>Password hashing is deterministic</strong> (same input → same hash, used for both store and
+compare). Cheap under load, but <strong>not</strong> a salted/slow KDF — a security note, not a perf one.</li>
+<li><strong><code>GetStatistics()</code> / <code>AttemptAcquire</code> on the Redis limiter return stubs</strong> — only the
+async acquire path is real; don't rely on limiter statistics in dashboards.</li>
+<li><strong>Home feed is a stub</strong> (returns empty) — there's no real fan-out/read-feed to test yet.</li>
+<li><strong>Embedding similarity is an in-memory full scan</strong> — fine cold, will not scale; keep
+<code>EnableEmbeddings=false</code> for raw throughput runs.</li>
+</ol>
+<hr>
+<h2 id="slide-17--next-step-the-nbomber-stress-suite-preview">Slide 17 — Next step: the NBomber stress suite (preview)</h2>
+<p>The existing <code>StressTestSuite/Microblog.LoadTests</code> is a stub (one register scenario). The
+plan is to grow it into a suite that pushes each subsystem to its limit:</p>
+<pre><code class="language-mermaid">flowchart TB
+    SETUP[&quot;Setup: seed users, capture auth cookies&quot;] --&gt; SCN
+    subgraph SCN[&quot;Scenarios (independent NBomber scenarios)&quot;]
+        S1[&quot;Auth: register/login burst&lt;br/&gt;→ find auth throughput + 429 behavior&quot;]
+        S2[&quot;Like storm on one hot post&lt;br/&gt;→ Redis fast path + queue depth&quot;]
+        S3[&quot;Mixed read feed&lt;br/&gt;→ cache hit ratio under read load&quot;]
+        S4[&quot;Follow storm&lt;br/&gt;→ SQL synchronous write ceiling&quot;]
+        S5[&quot;Post create&lt;br/&gt;→ SQL insert + fire-and-forget side effects&quot;]
+    end
+    SCN --&gt; LOAD[&quot;Load sims: ramp · spike · soak&quot;]
+    LOAD --&gt; REPORT[&quot;NBomber reports + Grafana correlation&quot;]
+</code></pre>
+<p>We'll wire each scenario to the corresponding endpoint, run against <strong>Production mode</strong> (to
+exercise rate limits) and <strong>Development mode</strong> (to find raw ceilings), and correlate
+NBomber's client-side latency with the server-side <code>microblog_*</code> metrics from Slide 13.</p>
+<blockquote>
+<p><strong>This deck is the map. The NBomber suite is the expedition — that's what we build next.</strong></p>
+</blockquote>
+
+            
+            
+        </body>
+        </html>
