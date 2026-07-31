@@ -14,7 +14,7 @@ public class UserLikeService(
 
     public async Task LikePostAsync(long userId, long postId, bool useCache = true)
     {
-        if (userId <= 0 || postId <= 0) throw new Exception("Cannot like post");
+        if (userId <= 0 || postId <= 0) throw new AppException("Cannot like post", HttpStatusCode.BadRequest);
 
         if (!useCache)
         {
@@ -38,7 +38,7 @@ public class UserLikeService(
 
     public async Task UnlikePostAsync(long userId, long postId, bool useCache = true)
     {
-        if (userId <= 0 || postId <= 0) throw new Exception("Cannot unlike post");
+        if (userId <= 0 || postId <= 0) throw new AppException("Cannot unlike post", HttpStatusCode.BadRequest);
 
         if (!useCache)
         {
@@ -61,7 +61,7 @@ public class UserLikeService(
     public async Task<(long likesCount, bool isLikedByUser)> GetPostLikesAndIsLikedByUserAsync(long userId, long postId,
         bool useCache = true)
     {
-        if (postId <= 0) throw new Exception("Cannot fetch post likes");
+        if (postId <= 0) throw new AppException("Cannot fetch post likes", HttpStatusCode.BadRequest);
 
         string key = SyncQueue.PostLikersKey(postId);
 

@@ -38,7 +38,7 @@ public class ExceptionHandlerMiddleware
             {
                 Success = false,
                 StatusCode = (int)HttpStatusCode.InternalServerError,
-                ex.Message
+                Message = "An unexpected error occurred."
             });
         }
     }

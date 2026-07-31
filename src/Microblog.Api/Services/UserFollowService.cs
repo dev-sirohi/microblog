@@ -11,8 +11,8 @@ public class UserFollowService(
 
     public async Task FollowUserAsync(long followerId, long followingId)
     {
-        if (followerId <= 0 || followingId <= 0) throw new Exception("Cannot follow user");
-        if (followerId == followingId) throw new Exception("Cannot follow yourself");
+        if (followerId <= 0 || followingId <= 0) throw new AppException("Cannot follow user", HttpStatusCode.BadRequest);
+        if (followerId == followingId) throw new AppException("Cannot follow yourself", HttpStatusCode.BadRequest);
 
         await userService.GetUserByIdAsync(followerId);
         await userService.GetUserByIdAsync(followingId);
@@ -25,8 +25,8 @@ public class UserFollowService(
 
     public async Task UnfollowUserAsync(long followerId, long followingId)
     {
-        if (followerId <= 0 || followingId <= 0) throw new Exception("Cannot unfollow user");
-        if (followerId == followingId) throw new Exception("Cannot unfollow yourself");
+        if (followerId <= 0 || followingId <= 0) throw new AppException("Cannot unfollow user", HttpStatusCode.BadRequest);
+        if (followerId == followingId) throw new AppException("Cannot unfollow yourself", HttpStatusCode.BadRequest);
 
         await _redis.SetRemoveAsync(SyncQueue.UserFollowingKey(followerId), followingId);
         await _redis.SetRemoveAsync(SyncQueue.UserFollowersKey(followingId), followerId);

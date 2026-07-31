@@ -21,15 +21,15 @@ public class UserService(AppDbContext dbContext, IHttpContextAccessor httpContex
     {
         long userId = GetCurrentLoggedInUserId();
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
-        return user ?? throw new Exception("Cannot fetch user");
+        return user ?? throw new AppException("Cannot fetch user", HttpStatusCode.NotFound);
     }
 
     public async Task<User> GetUserByIdAsync(long userId)
     {
-        if (userId == 0) throw new Exception("User not found");
+        if (userId == 0) throw new AppException("User not found", HttpStatusCode.BadRequest);
 
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
-        return user ?? throw new Exception("User not found");
+        return user ?? throw new AppException("User not found", HttpStatusCode.NotFound);
     }
 
     public async Task<IReadOnlyCollection<User>> GetUserListByIdListAsync(IReadOnlyCollection<long> userIdList)

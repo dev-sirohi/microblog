@@ -61,7 +61,7 @@ public class AuthController(AuthService authService, IConfiguration configuratio
         if (!string.IsNullOrWhiteSpace(token))
         {
             var authToken = await authService.RefreshAccessTokenAsync(token);
-            if (authToken == null) throw new Exception("Invalid refresh token");
+            if (authToken == null) throw new AppException("Invalid refresh token", HttpStatusCode.Unauthorized);
             Response.Cookies.Append("refreshToken", authToken.RefreshToken, new CookieOptions
             {
                 HttpOnly = true,

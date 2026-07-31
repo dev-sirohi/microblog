@@ -9,8 +9,8 @@ public class PostService(AppDbContext dbContext, ICacheService cacheService, ISe
 
     public async Task<Post> CreatePostAsync(long userId, string content)
     {
-        if (userId == 0) throw new Exception("Cannot create post");
-        if (string.IsNullOrWhiteSpace(content)) throw new Exception("Cannot create empty post");
+        if (userId == 0) throw new AppException("Cannot create post", HttpStatusCode.BadRequest);
+        if (string.IsNullOrWhiteSpace(content)) throw new AppException("Cannot create empty post", HttpStatusCode.BadRequest);
 
         var newPost = new Post
         {
@@ -46,7 +46,7 @@ public class PostService(AppDbContext dbContext, ICacheService cacheService, ISe
             async () => await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId),
             TimeSpan.FromMinutes(5));
 
-        return post ?? throw new Exception("Cannot fetch post");
+        return post ?? throw new AppException("Cannot fetch post", HttpStatusCode.NotFound);
     }
 
     public async Task<List<Post>> GetPostsByIdListAsync(List<long> postIdList)
@@ -66,11 +66,11 @@ public class PostService(AppDbContext dbContext, ICacheService cacheService, ISe
 
     public async Task<Post> UpdatePostAsync(long postId, long userId, string content)
     {
-        if (postId == 0) throw new Exception("Cannot update post");
-        if (string.IsNullOrWhiteSpace(content)) throw new Exception("Cannot create empty post");
+        if (postId == 0) throw new AppException("Cannot update post", HttpStatusCode.BadRequest);
+        if (string.IsNullOrWhiteSpace(content)) throw new AppException("Cannot create empty post", HttpStatusCode.BadRequest);
 
         var post = await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId && p.UserId == userId);
-        if (post == null) throw new Exception("Cannot update post");
+        if (post == null) throw new AppException("Cannot update post", HttpStatusCode.NotFound);
 
         post.Content = content;
         post.ModifiedAt = DateTime.UtcNow;
@@ -82,7 +82,7 @@ public class PostService(AppDbContext dbContext, ICacheService cacheService, ISe
 
     public async Task DeletePostAsync(long postId, long userId)
     {
-        if (postId == 0) throw new Exception("Unable to delete post. Post Id not provided");
+        if (postId == 0) throw new AppException("Unable to delete post. Post Id not provided", HttpStatusCode.BadRequest);
 
         var post = await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId && p.UserId == userId);
         if (post == null) return;

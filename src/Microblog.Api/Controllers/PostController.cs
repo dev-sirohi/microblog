@@ -26,7 +26,7 @@ public class PostController(
     {
         var response = new CommonUtils.ControllerResponseParams();
         var post = await postService.GetPostByIdAsync(id);
-        if (post == null) throw new Exception("Cannot fetch post");
+        if (post == null) throw new AppException("Cannot fetch post", HttpStatusCode.NotFound);
         response.Success = true;
         response.Message = "Post fetched successfully";
         response.Data = post;
@@ -52,7 +52,7 @@ public class PostController(
         var response = new CommonUtils.ControllerResponseParams();
         long userId = userService.GetCurrentLoggedInUserId();
         var post = await postService.UpdatePostAsync(id, userId, updatePostRequest.Content);
-        if (post == null) throw new Exception("Cannot update post");
+        if (post == null) throw new AppException("Cannot update post", HttpStatusCode.NotFound);
         response.Success = true;
         response.Message = "Post updated successfully";
         response.Data = post;

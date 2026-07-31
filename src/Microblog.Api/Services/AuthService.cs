@@ -9,11 +9,11 @@ public class AuthService(IConfiguration configuration, AppDbContext dbContext)
 {
     public async Task<User> RegisterAsync(string username, string email, string password)
     {
-        if (string.IsNullOrWhiteSpace(username)) throw new Exception("Username cannot be empty");
-        if (string.IsNullOrWhiteSpace(email)) throw new Exception("Email cannot be empty");
-        if (string.IsNullOrWhiteSpace(password)) throw new Exception("Password cannot be empty");
+        if (string.IsNullOrWhiteSpace(username)) throw new AppException("Username cannot be empty", HttpStatusCode.BadRequest);
+        if (string.IsNullOrWhiteSpace(email)) throw new AppException("Email cannot be empty", HttpStatusCode.BadRequest);
+        if (string.IsNullOrWhiteSpace(password)) throw new AppException("Password cannot be empty", HttpStatusCode.BadRequest);
         if (await dbContext.Users.AnyAsync(user => user.Email == email || user.Username == username))
-            throw new Exception("User with the same email or username already exists");
+            throw new AppException("User with the same email or username already exists", HttpStatusCode.Conflict);
 
         User newUser = new()
         {
@@ -34,8 +34,8 @@ public class AuthService(IConfiguration configuration, AppDbContext dbContext)
     public async Task<dynamic> LoginAsync(string username, string email, string password)
     {
         if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(username))
-            throw new Exception("Both Email and Username cannot be empty");
-        if (string.IsNullOrWhiteSpace(password)) throw new Exception("Password cannot be empty");
+            throw new AppException("Both Email and Username cannot be empty", HttpStatusCode.BadRequest);
+        if (string.IsNullOrWhiteSpace(password)) throw new AppException("Password cannot be empty", HttpStatusCode.BadRequest);
 
         string passwordHash = CommonUtils.HashPassword(password);
 
@@ -45,7 +45,7 @@ public class AuthService(IConfiguration configuration, AppDbContext dbContext)
         var user = await dbContext.Users.FirstOrDefaultAsync(u =>
             ((hasUsername && u.Username == username) || (hasEmail && u.Email == email))
             && u.PasswordHash == passwordHash);
-        if (user == null) throw new Exception("Invalid credentials");
+        if (user == null) throw new AppException("Invalid credentials", HttpStatusCode.Unauthorized);
 
         string accessToken = GenerateAccessToken(user);
         var authToken = await GenerateRefreshTokenAsync(user.Id);
@@ -87,7 +87,7 @@ public class AuthService(IConfiguration configuration, AppDbContext dbContext)
 
     public async Task<AuthToken> GenerateRefreshTokenAsync(long userId)
     {
-        if (userId == 0) throw new Exception("Cannot generate refresh token. Invalid user Id");
+        if (userId == 0) throw new AppException("Cannot generate refresh token. Invalid user Id", HttpStatusCode.BadRequest);
 
         byte[] randomNumber = new byte[32];
         using var rng = RandomNumberGenerator.Create();
