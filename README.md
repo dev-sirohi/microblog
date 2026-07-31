@@ -1,121 +1,123 @@
 # Microblog — Full Stack Social Platform
 
-A full-stack microblogging platform built with **.NET / ASP.NET Core**, **SQL Server**, **Redis**, and **React + TypeScript**. Backend-heavy, focused on caching strategies, observability, async messaging, and scalable API design.
+A backend-focused microblogging platform built with **ASP.NET Core (.NET 10)**, **SQL Server**,
+**Redis**, and **React + TypeScript**. The interesting engineering is the write path, the rate
+limiter, and the infrastructure — not the feature set.
 
 ---
 
-**API Preview**
+## Highlights
 
-<img width="929" height="893" alt="image" src="https://github.com/user-attachments/assets/22d5a004-f5fd-4683-aad5-8ce152997c39" />
-
----
-
-## Tech Stack
-
-**Backend**
-- ASP.NET Core / .NET 10
-- SQL Server (primary database)
-- Redis (caching, relationship sets, event queues, pub/sub)
-- JWT authentication via HTTP-only cookies
-- Polly (retry + circuit breaker)
-
-**Frontend**
-- React + TypeScript (Vite)
-- Tailwind CSS — dark mode, responsive
-- Optimistic UI updates for likes and follows
-
-**Infrastructure**
-- Kafka or Azure Service Bus (configurable event streaming)
-- Azure Blob Storage (media uploads, SAS URLs)
-- Prometheus metrics + Grafana
-- Docker Compose for local dev
+- **JWT auth with cookie-based sessions** — access + refresh tokens in HTTP-only, Secure,
+  SameSite=Strict cookies; refresh tokens persisted in SQL Server via EF Core.
+- **Redis sliding-window rate limiting** — per-endpoint policies applied with a `[RateLimit]` attribute.
+- **Eventual-consistency write path** — likes and follows are written to Redis and drained into SQL
+  Server in batches by a hosted `BackgroundService`, keeping user-facing latency off the database.
+- **Pluggable infrastructure** — `IMessagePublisher` (Azure Service Bus) and `IStorageService`
+  (Azure Blob Storage) behind interfaces.
+- **Observability** — Prometheus metrics scraped into auto-provisioned Grafana dashboards
+  (request latency, cache-hit ratio, background-sync queue depth).
+- **Deployment** — Azure App Service with secrets in Azure Key Vault, shipped by a GitHub Actions pipeline.
+- **Integration tests** — xUnit + Testcontainers covering auth, rate limiting, and the batched write path.
 
 ---
 
 ## Architecture
 
 ```
-React (web-client/)  →  ASP.NET Core API (src/Microblog.Api/)
-                                   ↓
-                         Service Layer (Business Logic)
-                                   ↓
-                    SQL Server (source of truth) + Redis (cache / async layer)
-                                   ↓
-                    Kafka / Azure Service Bus (durable event streaming)
+React SPA (web-client/) ──HTTP (auth cookies)──▶ ASP.NET Core API (src/Microblog.Api/)
+                                                        │
+                                                 Service layer
+                                                  ╱            ╲
+                                    Redis (fast read/write)   SQL Server (durable)
+                                                  ╲            ╱
+                                BackgroundSyncService drains Redis queues → SQL in batches
 ```
 
 ---
 
-## Features
+## API
 
-**Core**
-- User auth — register, login, logout, JWT refresh
-- Posts, comments, likes
-- Follow/unfollow system
-- Media uploads (local or Azure Blob Storage)
-
-**Caching**
-- Generic `ICacheService<T>` cache-aside wrapper over Redis
-- Redis sets for follower/like relationships
-- Background sync service drains Redis queues to SQL Server asynchronously (eventual consistency)
-
-**Messaging**
-- `IMessagePublisher` abstraction — switch between Kafka and Azure Service Bus via `appsettings.json`
-- Events: `post.created`, `post.liked`, `user.followed`
-
-**AI Recommendations**
-- OpenAI `text-embedding-3-small` generates embeddings on post creation (async, off write path)
-- `GET /api/posts/{id}/recommendations` — cosine similarity search, top 5–10 similar posts
-- Results cached in Redis (10 min TTL)
-- Disabled if `Features:EnableEmbeddings` is false or no API key is set
-
-**Observability**
-- Prometheus metrics endpoint (`/metrics`) — request latency, cache hit/miss, sync queue depth
-- Health checks at `/health`, `/health/ready`, `/health/live` (Redis + SQL Server)
-
-**Rate Limiting**
-- ASP.NET Core rate limiting middleware, Redis-backed sliding window
-- Per-endpoint policies: auth (5 req/min), post creation (20 req/min), feed (60 req/min)
-- Returns `429 Too Many Requests` with `Retry-After` header
+| Method | Route | Auth | Rate limit |
+|---|---|---|---|
+| POST | `/api/auth/register` | – | 5 / 5 min |
+| POST | `/api/auth/login` | – | 5 / min |
+| POST | `/api/auth/refreshtoken` | cookie | 5 / min |
+| POST | `/api/auth/logout` | cookie | – |
+| GET | `/api/post/homefeed` | – | – |
+| POST | `/api/post` | ✔ | 10 / min |
+| GET · PATCH · DELETE | `/api/post/{id}` | – / ✔ / ✔ | – / 10 per min / – |
+| POST | `/api/userlike/like/{id}` · `unlike/{id}` | ✔ | 60 / min |
+| GET | `/api/userlike/{id}` | ✔ | – |
+| POST | `/api/userfollow/follow/{id}` · `unfollow/{id}` | ✔ | 30 / min |
+| GET | `/api/userfollow` · `/api/userfollow/following` | ✔ | – |
+| GET | `/api/users/me` · `/api/users/{id}` | ✔ / – | – |
+| POST | `/api/users/me/avatar` | ✔ | – |
+| GET | `/metrics` | – | – |
 
 ---
 
-## Running the Project
+## Running it
 
-### Docker (recommended)
+### Docker Compose
 
 ```powershell
 cd src
 docker-compose up
 ```
 
-Starts API, SQL Server, Redis, Kafka, Prometheus, and Grafana together.
+Starts the API (:8080), SQL Server (:1433), Redis (:6379), Azurite (:10000), Prometheus (:9090)
+and Grafana (:3001, admin/admin). The API auto-migrates the database on startup.
 
-### Local
+### Locally
 
-Prerequisites: SQL Server on `localhost:1433`, Redis on `localhost:6379`, connection strings in `appsettings.Development.json`.
+Requires SQL Server on `localhost:1433` and Redis on `localhost:6379` — the quickest way is to run
+`docker-compose up sqlserver redis azurite` and start the API from your IDE.
 
 ```powershell
-# Backend
 cd src/Microblog.Api
-dotnet run --launch-profile https   # https://localhost:7282
+dotnet run          # https://localhost:7282 (Swagger at /swagger)
 
-# Frontend
 cd web-client
 npm install
-npm run dev                         # http://localhost:3000
+npm run dev         # http://localhost:3000
 ```
 
+### Tests
+
+```powershell
+cd src
+dotnet test Microblog.Tests/Microblog.Tests.csproj
+```
+
+Requires a running Docker daemon — Testcontainers starts throwaway SQL Server and Redis containers
+and the tests exercise the real app through `WebApplicationFactory<Program>`.
+
 ---
 
-## Key Design Trade-offs
+## Key design decisions
 
-- **Eventual consistency** — likes/follows write to Redis first and sync to SQL Server in the background; reads may lag briefly
-- **Configurable messaging** — Kafka for high-throughput self-hosted setups, Azure Service Bus for managed cloud deployments
-- **Embedding toggle** — recommendations are entirely opt-in; the platform functions without an OpenAI key
+- **Eventual consistency for likes/follows.** They hit Redis first and drain to SQL in the background.
+  Batches are collapsed to the final intent per entity, and events are processed *before* being
+  removed from the queue, so a crash mid-batch re-processes safely rather than losing writes.
+- **A custom sliding-window rate limiter.** A fixed window lets a caller burst 2× the limit across the
+  boundary; a sliding-window log over a Redis sorted set enforces the limit at every instant, and
+  living in Redis means it holds across every API instance. It fails open if Redis is unavailable.
+- **Config, not code, decides the environment.** The app only reads connection strings and feature
+  flags, so the same build runs against Docker containers locally and Azure services in the cloud.
+- **Interfaces where implementations actually swap** — storage, messaging, caching and rate limiting.
+  Single-implementation domain services are injected as concrete classes.
 
 ---
 
-## One-line summary
+## Future scope
 
-> A backend-heavy microblog platform exploring caching, eventual consistency, async messaging, and AI-powered recommendations.
+Deliberately out of scope for now:
+
+- **Comments** on posts.
+- **Embedding-based recommendations** — "similar posts" via cosine similarity over OpenAI embeddings
+  computed off the write path.
+- **Cache stampede protection** — a distributed lock around cache-miss recomputation.
+- **Health probes** — `/health/ready` (SQL + Redis) and `/health/live` for App Service.
+- **Structured logging and tracing** — Serilog sinks and OpenTelemetry traces alongside the existing
+  Prometheus metrics.

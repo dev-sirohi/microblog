@@ -7,6 +7,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microblog.Api", "Microblog.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microblog.Tests", "Microblog.Tests\Microblog.Tests.csproj", "{D6AA807D-6EF0-4D3C-B963-BE8287D613A8}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Infrastructure", "Infrastructure", "{3F8A1C42-9B7E-4D51-A6C3-7E2D5B8F1A90}"
+	ProjectSection(SolutionItems) = preProject
+		docker-compose.yml = docker-compose.yml
+		prometheus.yml = prometheus.yml
+		grafana\dashboards\microblog.json = grafana\dashboards\microblog.json
+		grafana\provisioning\dashboards\dashboards.yml = grafana\provisioning\dashboards\dashboards.yml
+		grafana\provisioning\datasources\datasource.yml = grafana\provisioning\datasources\datasource.yml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

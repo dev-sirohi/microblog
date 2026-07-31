@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code (and humans) working in this repository. Local-only working notes and an
+Guidance for Codex (and humans) working in this repository. Local-only working notes and an
 interview crib sheet.
 
 ---

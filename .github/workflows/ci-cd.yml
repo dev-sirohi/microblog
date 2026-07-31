@@ -1,0 +1,49 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build src/Microblog.Api.sln --configuration Release
+
+      - name: Test
+        run: dotnet test src/Microblog.Tests/Microblog.Tests.csproj --configuration Release --no-build
+
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
+        run: dotnet publish src/Microblog.Api/Microblog.Api.csproj --configuration Release --output ./publish
+
+      - name: Deploy to Azure App Service
+        if: github.ref == 'refs/heads/main'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ./publish
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web-client/package-lock.json
+      - run: npm ci
+        working-directory: web-client
+      - run: npm run build
+        working-directory: web-client
