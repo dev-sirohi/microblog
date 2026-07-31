@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Microblog.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260723162950_InitialCreate")]
+    [Migration("20260731074944_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -54,74 +54,6 @@ namespace Microblog.Api.Migrations
                     b.ToTable("AuthTokens");
                 });
 
-            modelBuilder.Entity("Microblog.Api.Models.Comment", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("PostId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("UserId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Comments");
-                });
-
-            modelBuilder.Entity("Microblog.Api.Models.MediaFile", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("EntityId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("EntityType")
-                        .HasColumnType("int");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("FilePath")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<long>("FileSize")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("MimeType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("MediaFiles");
-                });
-
             modelBuilder.Entity("Microblog.Api.Models.Post", b =>
                 {
                     b.Property<long>("Id")
@@ -137,9 +69,6 @@ namespace Microblog.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<byte[]>("EmbeddingData")
-                        .HasColumnType("varbinary(max)");
-
                     b.Property<DateTime>("ModifiedAt")
                         .HasColumnType("datetime2");
 
@@ -149,32 +78,6 @@ namespace Microblog.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Posts");
-                });
-
-            modelBuilder.Entity("Microblog.Api.Models.Tag", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<long?>("PostId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("TagHash")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PostId");
-
-                    b.ToTable("Tag");
                 });
 
             modelBuilder.Entity("Microblog.Api.Models.User", b =>
@@ -264,29 +167,6 @@ namespace Microblog.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("UserLikes");
-                });
-
-            modelBuilder.Entity("Microblog.Api.Models.Comment", b =>
-                {
-                    b.HasOne("Microblog.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Microblog.Api.Models.Tag", b =>
-                {
-                    b.HasOne("Microblog.Api.Models.Post", null)
-                        .WithMany("Tags")
-                        .HasForeignKey("PostId");
-                });
-
-            modelBuilder.Entity("Microblog.Api.Models.Post", b =>
-                {
-                    b.Navigation("Tags");
                 });
 #pragma warning restore 612, 618
         }

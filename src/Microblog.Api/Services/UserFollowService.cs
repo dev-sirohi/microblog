@@ -2,16 +2,10 @@ using Microblog.Api.Services.BackgroundProcesses;
 
 namespace Microblog.Api.Services;
 
-/// <summary>
-/// Follow/unfollow uses the same eventual-consistency write path as likes: the Redis
-/// relationship sets are updated immediately and an event is queued, then
-/// <see cref="BackgroundProcesses.BackgroundSyncService"/> drains it to SQL in batches.
-/// </summary>
 public class UserFollowService(
     AppDbContext dbContext,
     IConnectionMultiplexer connectionMultiplexer,
-    IUserService userService)
-    : IUserFollowService
+    UserService userService)
 {
     private readonly IDatabase _redis = connectionMultiplexer.GetDatabase();
 
@@ -20,15 +14,12 @@ public class UserFollowService(
         if (followerId <= 0 || followingId <= 0) throw new Exception("Cannot follow user");
         if (followerId == followingId) throw new Exception("Cannot follow yourself");
 
-        // Verify both users exist (throws if not).
         await userService.GetUserByIdAsync(followerId);
         await userService.GetUserByIdAsync(followingId);
 
-        // Update the read-side relationship sets immediately.
         await _redis.SetAddAsync(SyncQueue.UserFollowingKey(followerId), followingId);
         await _redis.SetAddAsync(SyncQueue.UserFollowersKey(followingId), followerId);
 
-        // Queue for the background drain to persist to SQL.
         await EnqueueAsync(new FollowEvent { FollowerId = followerId, FollowingId = followingId, Action = FollowAction.Follow });
     }
 
@@ -50,7 +41,6 @@ public class UserFollowService(
         if (members.Length > 0)
             return members.Select(m => (long)m).ToList();
 
-        // Cache miss → rebuild from SQL.
         var fromDb = await dbContext.UserFollows
             .Where(f => f.FollowerId == userId)
             .Select(f => f.FollowingId)
@@ -69,7 +59,6 @@ public class UserFollowService(
         if (members.Length > 0)
             return members.Select(m => (long)m).ToList();
 
-        // Cache miss → rebuild from SQL.
         var fromDb = await dbContext.UserFollows
             .Where(f => f.FollowingId == userId)
             .Select(f => f.FollowerId)

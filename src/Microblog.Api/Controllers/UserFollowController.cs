@@ -6,8 +6,8 @@ namespace Microblog.Api.Controllers;
 [Route("api/[controller]")]
 [ApiController]
 public class UserFollowController(
-    IUserFollowService userFollowService,
-    IUserService userService,
+    UserFollowService userFollowService,
+    UserService userService,
     IServiceProvider serviceProvider)
     : ControllerBase
 {
@@ -19,7 +19,6 @@ public class UserFollowController(
 
         long loggedInUserId = userService.GetCurrentLoggedInUserId();
         await userFollowService.FollowUserAsync(loggedInUserId, userId);
-        var user = await userService.GetUserByIdAsync(userId);
 
         _ = Task.Run(async () =>
         {
@@ -27,13 +26,14 @@ public class UserFollowController(
             {
                 var publisher = serviceProvider.GetService<IMessagePublisher>();
                 if (publisher is not null)
-                    await publisher.PublishAsync("user.followed", new UserFollowedEvent(loggedInUserId, userId, true, DateTime.UtcNow));
+                    await publisher.PublishAsync("user.followed",
+                        new UserFollowedEvent(loggedInUserId, userId, true, DateTime.UtcNow));
             }
             catch { }
         });
 
         response.Success = true;
-        response.Message = "Following user " + user?.Username;
+        response.Message = "Followed user";
 
         return Ok(response);
     }
@@ -46,10 +46,9 @@ public class UserFollowController(
 
         long loggedInUserId = userService.GetCurrentLoggedInUserId();
         await userFollowService.UnfollowUserAsync(loggedInUserId, userId);
-        var user = await userService.GetUserByIdAsync(userId);
 
         response.Success = true;
-        response.Message = "Unfollowed user " + user?.Username;
+        response.Message = "Unfollowed user";
 
         return Ok(response);
     }
@@ -61,11 +60,10 @@ public class UserFollowController(
 
         long loggedInUserId = userService.GetCurrentLoggedInUserId();
         var followerIdList = await userFollowService.GetFollowerIdListAsync(loggedInUserId);
-        var followerList = await userService.GetUserListByIdListReadOnlyAsync(followerIdList);
-        var followerResponseList = CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followerList);
+        var followerList = await userService.GetUserListByIdListAsync(followerIdList);
 
         response.Success = true;
-        response.Data = followerResponseList;
+        response.Data = followerList.Select(u => new { u.Id, u.Username });
 
         return Ok(response);
     }
@@ -77,12 +75,10 @@ public class UserFollowController(
 
         long loggedInUserId = userService.GetCurrentLoggedInUserId();
         var followingIdList = await userFollowService.GetFollowingIdListAsync(loggedInUserId);
-        var followingUsersList = await userService.GetUserListByIdListReadOnlyAsync(followingIdList);
-        var followingUsersResponseList =
-            CommonUtils.TransformTo<IReadOnlyCollection<UserResponseDto>>(followingUsersList);
+        var followingList = await userService.GetUserListByIdListAsync(followingIdList);
 
         response.Success = true;
-        response.Data = followingUsersResponseList;
+        response.Data = followingList.Select(u => new { u.Id, u.Username });
 
         return Ok(response);
     }

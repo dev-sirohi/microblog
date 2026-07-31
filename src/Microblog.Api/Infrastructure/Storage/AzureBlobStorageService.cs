@@ -4,34 +4,26 @@ using Azure.Storage.Sas;
 
 namespace Microblog.Api.Infrastructure.Storage;
 
-/// <summary>
-/// Stores media files in Azure Blob Storage and returns SAS URLs for secure access.
-/// Uses Azurite locally via <c>Azure:BlobConnectionString = "UseDevelopmentStorage=true"</c>.
-/// </summary>
-public sealed class AzureBlobStorageService : IStorageService
+public sealed class AzureBlobStorageService(IConfiguration config, ILogger<AzureBlobStorageService> logger)
+    : IStorageService
 {
-    private readonly BlobContainerClient _container;
-    private readonly ILogger<AzureBlobStorageService> _logger;
-
-    public AzureBlobStorageService(IConfiguration config, ILogger<AzureBlobStorageService> logger)
-    {
-        _logger = logger;
-        string connectionString = config["Azure:BlobConnectionString"]
-            ?? throw new InvalidOperationException("Azure:BlobConnectionString is required for blob storage");
-        string containerName = config["Azure:BlobContainerName"] ?? "microblog-media";
-        _container = new BlobContainerClient(connectionString, containerName);
-        _container.CreateIfNotExists(PublicAccessType.None);
-    }
+    private readonly BlobContainerClient _container = new(
+        config["Azure:BlobConnectionString"]
+            ?? throw new InvalidOperationException("Azure:BlobConnectionString is required for blob storage"),
+        config["Azure:BlobContainerName"] ?? "microblog-media");
 
     public async Task<string> SaveFileAsync(IFormFile file, string relativePath, CancellationToken ct = default)
     {
+        await _container.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: ct);
+
         string blobName = relativePath.TrimStart('/');
         BlobClient blob = _container.GetBlobClient(blobName);
 
         await using var stream = file.OpenReadStream();
-        await blob.UploadAsync(stream, new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = file.ContentType } }, ct);
+        await blob.UploadAsync(stream,
+            new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = file.ContentType } }, ct);
 
-        _logger.LogInformation("Uploaded blob {BlobName}", blobName);
+        logger.LogInformation("Uploaded blob {BlobName}", blobName);
         return blobName;
     }
 
@@ -46,12 +38,8 @@ public sealed class AzureBlobStorageService : IStorageService
         string blobName = path.TrimStart('/');
         BlobClient blob = _container.GetBlobClient(blobName);
 
-        // Generate a SAS URL valid for 1 hour
         if (blob.CanGenerateSasUri)
-        {
-            var sasUri = blob.GenerateSasUri(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddHours(1));
-            return sasUri.ToString();
-        }
+            return blob.GenerateSasUri(BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddHours(1)).ToString();
 
         return blob.Uri.ToString();
     }

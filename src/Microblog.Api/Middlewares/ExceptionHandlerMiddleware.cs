@@ -1,4 +1,4 @@
-﻿namespace Microblog.Api.Middlewares;
+namespace Microblog.Api.Middlewares;
 
 public class ExceptionHandlerMiddleware
 {

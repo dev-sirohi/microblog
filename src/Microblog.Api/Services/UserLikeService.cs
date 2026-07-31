@@ -3,18 +3,11 @@ using Microblog.Api.Services.BackgroundProcesses;
 
 namespace Microblog.Api.Services;
 
-/// <summary>
-/// Like/unlike writes take the fast path: they update the Redis read cache and drop an
-/// event onto a Redis queue, then return immediately. <see cref="BackgroundProcesses.BackgroundSyncService"/>
-/// drains that queue into SQL Server in batches. Reads are served from Redis and fall back
-/// to SQL (rebuilding the cache) on a miss.
-/// </summary>
 public class UserLikeService(
-    IPostService postService,
+    PostService postService,
     AppDbContext dbContext,
     IConnectionMultiplexer connectionMultiplexer,
-    ILogger<IUserLikeService> logger)
-    : IUserLikeService
+    ILogger<UserLikeService> logger)
 {
     private readonly IDatabase _redis = connectionMultiplexer.GetDatabase();
     private readonly ILogger _logger = logger;
@@ -31,10 +24,7 @@ public class UserLikeService(
 
         try
         {
-            // 1. Update the read cache so GET reflects the like instantly.
             await _redis.SortedSetAddAsync(SyncQueue.PostLikersKey(postId), userId, SyncQueue.NowScore());
-
-            // 2. Queue the event for the background drain to persist to SQL.
             await EnqueueAsync(new LikeEvent { UserId = userId, PostId = postId, Action = LikeAction.Like });
 
             AppMetrics.PostLikes.Inc();
@@ -115,8 +105,6 @@ public class UserLikeService(
         var ids = await GetRecentlyLikedPostIdsByUserAsync(userId, page, limit, useCache);
         return await postService.GetPostsByIdListAsync(ids);
     }
-
-    // ── helpers ──────────────────────────────────────────────────────────────────────
 
     private Task EnqueueAsync(LikeEvent evt) =>
         _redis.SortedSetAddAsync(SyncQueue.LikeEventsKey, SyncQueue.Serialize(evt), SyncQueue.NowScore());

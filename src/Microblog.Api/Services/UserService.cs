@@ -1,28 +1,20 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 
 namespace Microblog.Api.Services;
 
-public class UserService(
-    AppDbContext dbContext,
-    IConnectionMultiplexer connectionMultiplexer,
-    IHttpContextAccessor httpContext)
-    : IUserService
+public class UserService(AppDbContext dbContext, IHttpContextAccessor httpContext)
 {
-    private readonly IDatabase _inMemoryDb = connectionMultiplexer.GetDatabase();
-
     public long GetCurrentLoggedInUserId()
     {
-        long userId = 0;
         var context = httpContext.HttpContext;
         if (context?.User?.Identity?.IsAuthenticated != true)
-            return Convert.ToInt64(userId) == 0
-                ? throw new AppException("User logged out", HttpStatusCode.Unauthorized)
-                : userId;
-        
-        var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier);
-        if (userIdClaim != null && long.TryParse(userIdClaim.Value, out long uid)) userId = uid;
+            throw new AppException("User logged out", HttpStatusCode.Unauthorized);
 
-        return Convert.ToInt64(userId) == 0 ? throw new AppException("User logged out", HttpStatusCode.Unauthorized) : userId;
+        var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !long.TryParse(userIdClaim.Value, out long userId) || userId == 0)
+            throw new AppException("User logged out", HttpStatusCode.Unauthorized);
+
+        return userId;
     }
 
     public async Task<User> GetCurrentLoggedInUserAsync()
@@ -40,11 +32,18 @@ public class UserService(
         return user ?? throw new Exception("User not found");
     }
 
-    public async Task<IReadOnlyCollection<User>> GetUserListByIdListReadOnlyAsync(IReadOnlyCollection<long> userIdList)
+    public async Task<IReadOnlyCollection<User>> GetUserListByIdListAsync(IReadOnlyCollection<long> userIdList)
     {
-        if (userIdList.Count == 0) throw new Exception("Cannot fetch users");
-        var userList = await dbContext.Users.Where(user => userIdList.Contains(user.Id)).ToListAsync();
+        if (userIdList.Count == 0) return [];
 
-        return userList;
+        return await dbContext.Users.Where(user => userIdList.Contains(user.Id)).ToListAsync();
+    }
+
+    public async Task SetProfilePictureUrlAsync(long userId, string url)
+    {
+        var user = await GetUserByIdAsync(userId);
+        user.ProfilePictureUrl = url;
+        user.ModifiedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync();
     }
 }

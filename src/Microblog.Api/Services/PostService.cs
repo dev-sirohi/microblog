@@ -1,16 +1,11 @@
-using Microblog.Api.Features.Recommendations;
+using Microblog.Api.Infrastructure.Caching;
 using Microblog.Api.Infrastructure.Messaging;
-using Microblog.Api.Utils;
 
 namespace Microblog.Api.Services;
 
-public class PostService(
-    AppDbContext dbContext,
-    IConnectionMultiplexer connectionMultiplexer,
-    IServiceProvider serviceProvider,
-    GlobalConfig globalConfig) : IPostService
+public class PostService(AppDbContext dbContext, ICacheService cacheService, IServiceProvider serviceProvider)
 {
-    private readonly IDatabase _inMemoryDb = connectionMultiplexer.GetDatabase();
+    private static string PostCacheKey(long postId) => $"post:{postId}";
 
     public async Task<Post> CreatePostAsync(long userId, string content)
     {
@@ -26,12 +21,8 @@ public class PostService(
         await dbContext.Posts.AddAsync(newPost);
         await dbContext.SaveChangesAsync();
 
-        // Fire-and-forget: publish event + queue embedding computation
-        _ = Task.Run(async () =>
-        {
-            await TryPublishEventAsync(new PostCreatedEvent(newPost.Id, userId, content, newPost.CreatedAt));
-            await TryQueueEmbeddingAsync(newPost.Id, content);
-        });
+        _ = Task.Run(() =>
+            TryPublishEventAsync(new PostCreatedEvent(newPost.Id, userId, content, newPost.CreatedAt)));
 
         return newPost;
     }
@@ -41,75 +32,36 @@ public class PostService(
         if (page < 1) page = 1;
         pageSize = Math.Clamp(pageSize, 1, 50);
 
-        // Simple reverse-chronological global feed.
         return await dbContext.Posts
             .OrderByDescending(p => p.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p => new Post
-            {
-                Id = p.Id,
-                Content = p.Content,
-                CreatedAt = p.CreatedAt,
-                UserId = p.UserId
-            })
             .ToListAsync();
-    }
-
-    public async Task DeletePostAsync(long postId, long userId)
-    {
-        if (postId == 0) throw new Exception("Unable to delete post. Post Id not provided");
-
-        var post = await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId && p.UserId == userId);
-        if (post != null)
-        {
-            dbContext.Posts.Remove(post);
-            await dbContext.SaveChangesAsync();
-        }
     }
 
     public async Task<Post> GetPostByIdAsync(long postId)
     {
-        var post = await (
-            from p in dbContext.Posts
-            where p.Id == postId
-            select new Post
-            {
-                Id = p.Id,
-                Content = p.Content,
-                CreatedAt = p.CreatedAt,
-                UserId = p.UserId,
-            }).FirstOrDefaultAsync();
+        var post = await cacheService.GetOrSetAsync(
+            PostCacheKey(postId),
+            async () => await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId),
+            TimeSpan.FromMinutes(5));
 
         return post ?? throw new Exception("Cannot fetch post");
     }
 
     public async Task<List<Post>> GetPostsByIdListAsync(List<long> postIdList)
     {
-        var posts = await dbContext.Posts
-            .Where(p => postIdList.Contains(p.Id))
-            .ToListAsync();
-
-        return posts;
+        return await dbContext.Posts.Where(p => postIdList.Contains(p.Id)).ToListAsync();
     }
 
-    public async Task<List<Post>> GetUserPostsAsync(long userId, int page = 1, int pageSize = 10,
-        Order sortOrderByCreatedAt = Order.Descending)
+    public async Task<List<Post>> GetUserPostsAsync(long userId, int page = 1, int pageSize = 10)
     {
-        var posts = await dbContext.Posts
+        return await dbContext.Posts
             .Where(p => p.UserId == userId)
+            .OrderByDescending(p => p.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
-        if (sortOrderByCreatedAt == Order.Descending)
-        {
-            posts = posts.OrderByDescending(p => p.CreatedAt).ToList();
-        }
-        else
-        {
-            posts = posts.OrderBy(p => p.CreatedAt).ToList();
-        }
-        return posts;
     }
 
     public async Task<Post> UpdatePostAsync(long postId, long userId, string content)
@@ -117,24 +69,27 @@ public class PostService(
         if (postId == 0) throw new Exception("Cannot update post");
         if (string.IsNullOrWhiteSpace(content)) throw new Exception("Cannot create empty post");
 
-        var originalPostObj = await dbContext.Posts.FirstOrDefaultAsync(_post => _post.Id == postId);
+        var post = await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId && p.UserId == userId);
+        if (post == null) throw new Exception("Cannot update post");
 
-        if (originalPostObj == null)
-        {
-            var updatedPostObj = await CreatePostAsync(userId, content);
-
-            return updatedPostObj ?? throw new Exception("Cannot update post");
-        }
-
-        originalPostObj.Content = content;
-        originalPostObj.ModifiedAt = DateTime.UtcNow;
-
-        // Re-queue embedding when content changes
-        _ = Task.Run(() => TryQueueEmbeddingAsync(postId, content));
-
+        post.Content = content;
+        post.ModifiedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();
+        await cacheService.RemoveAsync(PostCacheKey(postId));
 
-        return originalPostObj;
+        return post;
+    }
+
+    public async Task DeletePostAsync(long postId, long userId)
+    {
+        if (postId == 0) throw new Exception("Unable to delete post. Post Id not provided");
+
+        var post = await dbContext.Posts.FirstOrDefaultAsync(p => p.Id == postId && p.UserId == userId);
+        if (post == null) return;
+
+        dbContext.Posts.Remove(post);
+        await dbContext.SaveChangesAsync();
+        await cacheService.RemoveAsync(PostCacheKey(postId));
     }
 
     private async Task TryPublishEventAsync(PostCreatedEvent evt)
@@ -145,19 +100,6 @@ public class PostService(
             if (publisher is not null)
                 await publisher.PublishAsync("post.created", evt);
         }
-        catch { /* messaging is best-effort */ }
-    }
-
-    private async Task TryQueueEmbeddingAsync(long postId, string content)
-    {
-        if (!globalConfig.EnableEmbeddings) return;
-        try
-        {
-            using var scope = serviceProvider.CreateScope();
-            var recommendations = scope.ServiceProvider.GetService<IRecommendationService>();
-            if (recommendations is not null)
-                await recommendations.ComputeAndStoreEmbeddingAsync(postId, content);
-        }
-        catch { /* embedding is non-critical */ }
+        catch { }
     }
 }

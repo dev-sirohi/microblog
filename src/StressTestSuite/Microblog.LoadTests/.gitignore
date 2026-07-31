@@ -1,9 +1,0 @@
-# Local environment config (use .env.example as the template)
-.env
-
-# NBomber output
-reports/
-
-# Build output
-bin/
-obj/

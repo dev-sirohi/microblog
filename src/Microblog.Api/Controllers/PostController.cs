@@ -1,13 +1,10 @@
-using Microblog.Api.Features.Recommendations;
-
 namespace Microblog.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
 public class PostController(
-    IPostService postService,
-    IUserService userService,
-    IServiceProvider serviceProvider) : ControllerBase
+    PostService postService,
+    UserService userService) : ControllerBase
 {
     [Authorize]
     [RateLimit(AppConstants.ApiRequestAction.CreatePost)]
@@ -71,25 +68,6 @@ public class PostController(
         await postService.DeletePostAsync(id, userId);
         response.Success = true;
         response.Message = "Post deleted successfully";
-        return Ok(response);
-    }
-
-    [HttpGet("{id:long}/recommendations")]
-    public async Task<IActionResult> GetRecommendations(long id, [FromQuery] int limit = 5)
-    {
-        var response = new CommonUtils.ControllerResponseParams();
-        var recommendations = serviceProvider.GetService<IRecommendationService>();
-        if (recommendations is null)
-        {
-            response.Success = false;
-            response.Message = "Recommendations feature is disabled. Enable Features:EnableEmbeddings in configuration.";
-            return Ok(response);
-        }
-
-        var posts = await recommendations.GetRecommendationsAsync(id, Math.Clamp(limit, 1, 10));
-        response.Success = true;
-        response.Message = "Recommendations fetched successfully";
-        response.Data = posts;
         return Ok(response);
     }
 }

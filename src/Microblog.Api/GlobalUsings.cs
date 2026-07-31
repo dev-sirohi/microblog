@@ -1,4 +1,4 @@
-﻿global using Microsoft.EntityFrameworkCore;
+global using Microsoft.EntityFrameworkCore;
 global using Microsoft.AspNetCore.Http;
 global using Microsoft.AspNetCore.Mvc;
 global using Microsoft.AspNetCore.Authorization;
@@ -10,9 +10,7 @@ global using Microblog.Api.Models;
 global using Microblog.Api.DTOs;
 global using Microblog.Api.Database;
 global using Microblog.Api.Middlewares;
-global using Microblog.Api.Interfaces.ServiceInterfaces;
 global using Microblog.Api.Services;
 global using Microblog.Api.Utils;
-global using Microblog.Api.Interfaces.ProviderInterfaces;
 global using Microblog.Api.Filters.Attributes;
 global using Microblog.Api.Filters;

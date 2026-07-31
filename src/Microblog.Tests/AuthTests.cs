@@ -26,11 +26,9 @@ public class AuthTests(MicroblogApiFactory factory)
             new { Username = username, Email = "", Password = "P@ssw0rd123" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
 
-        // Cookie-based session: both tokens come back as cookies.
         Assert.NotNull(TestHelpers.ExtractCookie(login, "accessToken"));
         Assert.NotNull(TestHelpers.ExtractCookie(login, "refreshToken"));
 
-        // EF Core persistence: the user row exists in SQL Server.
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.True(await db.Users.AnyAsync(u => u.Username == username));

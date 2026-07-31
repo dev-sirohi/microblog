@@ -1,13 +1,15 @@
+using Microblog.Api.Infrastructure.Storage;
+
 namespace Microblog.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
 public class UsersController(
-    IUserService userService,
-    IPostService postService,
-    IUserFollowService userFollowService) : ControllerBase
+    UserService userService,
+    PostService postService,
+    UserFollowService userFollowService,
+    IStorageService storageService) : ControllerBase
 {
-    /// <summary>The currently authenticated user (used by the client to know who is logged in).</summary>
     [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetMe()
@@ -15,11 +17,18 @@ public class UsersController(
         var response = new CommonUtils.ControllerResponseParams();
         var user = await userService.GetCurrentLoggedInUserAsync();
         response.Success = true;
-        response.Data = new { user.Id, user.Username, user.Bio };
+        response.Data = new
+        {
+            user.Id,
+            user.Username,
+            user.Bio,
+            AvatarUrl = string.IsNullOrEmpty(user.ProfilePictureUrl)
+                ? string.Empty
+                : storageService.GetUrl(user.ProfilePictureUrl)
+        };
         return Ok(response);
     }
 
-    /// <summary>A user's public profile: their posts plus follower/following counts.</summary>
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetProfile(long id)
     {
@@ -42,11 +51,32 @@ public class UsersController(
             user.Id,
             user.Username,
             user.Bio,
+            AvatarUrl = string.IsNullOrEmpty(user.ProfilePictureUrl)
+                ? string.Empty
+                : storageService.GetUrl(user.ProfilePictureUrl),
             FollowersCount = followers.Count,
             FollowingCount = following.Count,
             IsFollowing = isFollowing,
             Posts = posts
         };
+        return Ok(response);
+    }
+
+    [Authorize]
+    [HttpPost("me/avatar")]
+    public async Task<IActionResult> UploadAvatar(IFormFile file)
+    {
+        var response = new CommonUtils.ControllerResponseParams();
+        if (file is null || file.Length == 0) throw new AppException("No file uploaded");
+
+        long userId = userService.GetCurrentLoggedInUserId();
+        string blobName = $"avatars/{userId}{Path.GetExtension(file.FileName)}";
+        string storedPath = await storageService.SaveFileAsync(file, blobName);
+        await userService.SetProfilePictureUrlAsync(userId, storedPath);
+
+        response.Success = true;
+        response.Message = "Avatar uploaded successfully";
+        response.Data = new { AvatarUrl = storageService.GetUrl(storedPath) };
         return Ok(response);
     }
 }

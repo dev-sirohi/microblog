@@ -2,15 +2,6 @@ using Microblog.Api.Infrastructure.Observability;
 
 namespace Microblog.Api.Services.BackgroundProcesses;
 
-/// <summary>
-/// Hosted service that drains the Redis like/follow event queues into SQL Server in batches.
-///
-/// Every poll interval it pulls up to <see cref="SyncQueue.BatchSize"/> events from each queue
-/// (oldest first), collapses them to the final intended state per entity, applies the net
-/// changes to SQL in one SaveChanges, and only then removes the processed events from Redis.
-/// Processing before removal means a crash mid-batch simply re-processes the batch next tick
-/// (the applies are idempotent), so no like or follow is lost.
-/// </summary>
 internal sealed class BackgroundSyncService(
     IConnectionMultiplexer connectionMultiplexer,
     ILogger<BackgroundSyncService> logger,
@@ -51,7 +42,6 @@ internal sealed class BackgroundSyncService(
 
         var events = raw.Select(v => SyncQueue.Deserialize<LikeEvent>(v!)).ToList();
 
-        // Collapse to the last intent per (user, post) so a like→unlike in the same batch is a no-op.
         var final = events
             .GroupBy(e => (e.UserId, e.PostId))
             .Select(g => g.OrderBy(e => e.CreatedAt).Last());
@@ -102,6 +92,6 @@ internal sealed class BackgroundSyncService(
             long depth = _redis.SortedSetLength(SyncQueue.LikeEventsKey) + _redis.SortedSetLength(SyncQueue.FollowEventsKey);
             AppMetrics.BackgroundSyncQueueDepth.Set(depth);
         }
-        catch { /* metric best-effort */ }
+        catch {  }
     }
 }

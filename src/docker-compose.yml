@@ -1,6 +1,5 @@
 services:
   microblog.api:
-    image: ${DOCKER_REGISTRY-}microblogapi
     build:
       context: Microblog.Api
       dockerfile: Dockerfile
@@ -8,6 +7,7 @@ services:
       - "8080:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_HTTP_PORTS=8080
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MicroblogDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True;
       - Redis__ConnectionString=redis:6379,abortConnect=false
       - Azure__BlobConnectionString=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
@@ -19,13 +19,6 @@ services:
       azurite:
         condition: service_started
 
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
@@ -33,8 +26,6 @@ services:
       SA_PASSWORD: "YourStrong@Passw0rd"
     ports:
       - "1433:1433"
-    volumes:
-      - sqlserver-data:/var/opt/mssql
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1'"]
       interval: 10s
@@ -42,13 +33,16 @@ services:
       retries: 10
       start_period: 20s
 
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
     command: "azurite-blob --blobHost 0.0.0.0"
     ports:
       - "10000:10000"
-    volumes:
-      - azurite-data:/data
 
   prometheus:
     image: prom/prometheus:latest
@@ -56,10 +50,6 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=15d'
 
   grafana:
     image: grafana/grafana:latest
@@ -69,15 +59,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
-
-volumes:
-  redis-data:
-  sqlserver-data:
-  azurite-data:
-  prometheus-data:
-  grafana-data:

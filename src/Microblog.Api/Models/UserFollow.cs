@@ -1,4 +1,4 @@
-﻿namespace Microblog.Api.Models;
+namespace Microblog.Api.Models;
 
 public class UserFollow
 {
@@ -8,7 +8,6 @@ public class UserFollow
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-/* Enqueued to Redis and drained to SQL in batches by BackgroundSyncService. */
 public class FollowEvent
 {
     public Guid EventId { get; set; } = Guid.NewGuid();

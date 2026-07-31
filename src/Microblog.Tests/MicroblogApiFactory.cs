@@ -12,11 +12,6 @@ using Xunit;
 
 namespace Microblog.Tests;
 
-/// <summary>
-/// Lets a test pin the caller's IP via the <c>X-Test-Client-Ip</c> header so rate-limit
-/// buckets (keyed by client IP for anonymous callers) are isolated per test instead of all
-/// collapsing onto the null RemoteIpAddress that TestServer produces.
-/// </summary>
 internal sealed class TestClientIpStartupFilter : IStartupFilter
 {
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
@@ -32,11 +27,6 @@ internal sealed class TestClientIpStartupFilter : IStartupFilter
     };
 }
 
-/// <summary>
-/// Boots the real API against throwaway SQL Server and Redis containers, so integration
-/// tests exercise the genuine EF Core, JWT, rate-limiting and background-sync code paths.
-/// The app auto-migrates on startup, so the schema is created inside the SQL container.
-/// </summary>
 public sealed class MicroblogApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly MsSqlContainer _sql = new MsSqlBuilder()
@@ -56,7 +46,7 @@ public sealed class MicroblogApiFactory : WebApplicationFactory<Program>, IAsync
             {
                 ["ConnectionStrings:DefaultConnection"] = _sql.GetConnectionString(),
                 ["Redis:ConnectionString"] = $"{_redis.GetConnectionString()},abortConnect=false,connectTimeout=15000,syncTimeout=15000,connectRetry=5,keepAlive=10",
-                // Enable rate limiting even though we run under Development.
+
                 ["RateLimiting:Disabled"] = "false",
                 ["Features:EnableEmbeddings"] = "false",
                 ["Features:MessagingProvider"] = "none",

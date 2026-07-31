@@ -6,8 +6,8 @@ namespace Microblog.Api.Controllers;
 [Route("api/[controller]")]
 [ApiController]
 public class UserLikeController(
-    IUserService userService,
-    IUserLikeService userLikeService,
+    UserService userService,
+    UserLikeService userLikeService,
     IServiceProvider serviceProvider)
     : ControllerBase
 {
@@ -46,8 +46,6 @@ public class UserLikeController(
         return Ok(response);
     }
 
-    // Returns a post's like count and whether the current user has liked it.
-    // Served from Redis (the sorted-set fast path), falling back to SQL on a cache miss.
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetPostLikes(long id)
     {

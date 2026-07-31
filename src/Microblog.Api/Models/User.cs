@@ -1,4 +1,4 @@
-﻿namespace Microblog.Api.Models;
+namespace Microblog.Api.Models;
 
 public class User
 {

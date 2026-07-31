@@ -10,7 +10,6 @@ public class RateLimitingTests(MicroblogApiFactory factory)
     [Fact]
     public async Task Login_Endpoint_Returns_429_After_Exceeding_The_Sliding_Window()
     {
-        // The login policy allows 5 requests/minute per caller. A 6th within the window is rejected.
         var client = TestHelpers.NewClient(factory, "203.0.113.10");
 
         var payload = new { Username = "nobody", Email = "", Password = "whatever" };
@@ -28,7 +27,6 @@ public class RateLimitingTests(MicroblogApiFactory factory)
     [Fact]
     public async Task Distinct_Policies_Are_Independent()
     {
-        // Exhausting the login limit must not block registration (separate per-endpoint policy).
         var client = TestHelpers.NewClient(factory, "203.0.113.20");
         var login = new { Username = "someone", Email = "", Password = "whatever" };
         for (int i = 0; i < 6; i++)

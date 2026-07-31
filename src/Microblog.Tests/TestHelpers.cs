@@ -11,7 +11,6 @@ internal static class TestHelpers
 {
     private static int _seq;
 
-    /// <summary>A client with cookie handling off and a unique caller IP (isolates rate-limit buckets).</summary>
     public static HttpClient NewClient(MicroblogApiFactory factory, string? ip = null)
     {
         var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
@@ -28,11 +27,8 @@ internal static class TestHelpers
         return $"{r.Next(11, 250)}.{r.Next(0, 255)}.{r.Next(0, 255)}.{r.Next(1, 254)}";
     }
 
-    /// <summary>Registers a fresh user, logs in, and returns a client that carries the auth cookie.</summary>
     public static async Task<(HttpClient client, string username)> RegisterAndLoginAsync(MicroblogApiFactory factory)
     {
-        // HandleCookies = false: we forward the access-token cookie by hand because it is
-        // marked Secure and the in-memory TestServer speaks http, so the cookie jar would drop it.
         var client = NewClient(factory);
 
         string username = $"user{Interlocked.Increment(ref _seq)}_{Guid.NewGuid():N}".Substring(0, 20);

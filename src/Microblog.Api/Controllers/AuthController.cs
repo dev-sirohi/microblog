@@ -2,7 +2,7 @@ namespace Microblog.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-public class AuthController(IAuthService authService, IConfiguration configuration)
+public class AuthController(AuthService authService, IConfiguration configuration)
     : ControllerBase
 {
     [RateLimit(AppConstants.ApiRequestAction.Register)]

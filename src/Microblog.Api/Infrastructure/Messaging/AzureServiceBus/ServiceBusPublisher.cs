@@ -4,10 +4,6 @@ using Microblog.Api.Infrastructure.Observability;
 
 namespace Microblog.Api.Infrastructure.Messaging.AzureServiceBus;
 
-/// <summary>
-/// Publishes domain events to Azure Service Bus.
-/// Enabled via <c>Features:MessagingProvider = "azure-service-bus"</c> plus a connection string.
-/// </summary>
 public sealed class ServiceBusPublisher : IMessagePublisher, IAsyncDisposable
 {
     private readonly ServiceBusClient _client;

@@ -14,22 +14,18 @@ public class BatchedWritePathTests(MicroblogApiFactory factory)
     {
         var (client, _) = await TestHelpers.RegisterAndLoginAsync(factory);
 
-        // Create a post to like.
         var create = await client.PostAsJsonAsync("/api/post", new { Content = "hello from the batched write path" });
         create.EnsureSuccessStatusCode();
         long postId = (await TestHelpers.ReadDataAsync(create)).GetProperty("Id").GetInt64();
 
-        // Like it — this writes to Redis (cache + queue) and returns immediately.
         (await client.PostAsync($"/api/userlike/like/{postId}", null)).EnsureSuccessStatusCode();
 
-        // Read side is served from the Redis cache straight away.
         var likesRes = await client.GetAsync($"/api/userlike/{postId}");
         likesRes.EnsureSuccessStatusCode();
         var likesData = await TestHelpers.ReadDataAsync(likesRes);
         Assert.Equal(1, likesData.GetProperty("LikesCount").GetInt64());
         Assert.True(likesData.GetProperty("IsLikedByUser").GetBoolean());
 
-        // The background sync worker drains the queue into SQL within a couple of seconds.
         Assert.True(await EventuallyAsync(async db =>
             await db.UserLikes.AnyAsync(l => l.PostId == postId)));
     }
@@ -49,7 +45,6 @@ public class BatchedWritePathTests(MicroblogApiFactory factory)
 
         (await follower.PostAsync($"/api/userfollow/follow/{followeeId}", null)).EnsureSuccessStatusCode();
 
-        // No synchronous SQL write happened; the background worker persists the follow.
         Assert.True(await EventuallyAsync(async db =>
             await db.UserFollows.AnyAsync(f => f.FollowingId == followeeId)));
     }
