@@ -16,7 +16,7 @@ public class AuthController(AuthService authService, IConfiguration configuratio
 
         response.Success = true;
         response.Message = "User registered successfully";
-        response.Data = newUser;
+        response.Data = new { newUser.Id, newUser.Username, newUser.Email, newUser.Bio };
 
         return Ok(response);
     }
@@ -44,9 +44,10 @@ public class AuthController(AuthService authService, IConfiguration configuratio
             Expires = DateTimeOffset.UtcNow.AddDays(Convert.ToDouble(configuration["Jwt:RefreshTokenExpireDays"]))
         });
 
+        User loggedInUser = loginObj.User;
         response.Success = true;
         response.Message = "Login successful";
-        response.Data = loginObj.User;
+        response.Data = new { loggedInUser.Id, loggedInUser.Username, loggedInUser.Email, loggedInUser.Bio };
 
         return Ok(response);
     }
