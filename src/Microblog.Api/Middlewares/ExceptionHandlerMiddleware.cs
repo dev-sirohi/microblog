@@ -32,6 +32,7 @@ public class ExceptionHandlerMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled Exception");
+            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsJsonAsync(new
             {

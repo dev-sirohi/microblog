@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.RateLimiting;
 using Microblog.Api.Features.Recommendations;
 
 namespace Microblog.Api.Controllers;
@@ -10,7 +9,8 @@ public class PostController(
     IUserService userService,
     IServiceProvider serviceProvider) : ControllerBase
 {
-    [EnableRateLimiting("create-post")]
+    [Authorize]
+    [RateLimit(AppConstants.ApiRequestAction.CreatePost)]
     [HttpPost]
     public async Task<IActionResult> CreatePost([FromBody] CreateUpdatePostRequestDto createPostRequest)
     {
@@ -24,7 +24,6 @@ public class PostController(
         return Ok(response);
     }
 
-    [EnableRateLimiting("feed")]
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetPostById(long id)
     {
@@ -37,26 +36,19 @@ public class PostController(
         return Ok(response);
     }
 
-    [EnableRateLimiting("feed")]
     [HttpGet("homefeed")]
-    public Task<IActionResult> GetHomeFeed()
+    public async Task<IActionResult> GetHomeFeed([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
-        try
-        {
-            var response = new CommonUtils.ControllerResponseParams();
-            var posts = new List<Post>();
-            response.Success = true;
-            response.Message = "Post fetched successfully";
-            response.Data = posts;
-            return Task.FromResult<IActionResult>(Ok(response));
-        }
-        catch (Exception exception)
-        {
-            return Task.FromException<IActionResult>(exception);
-        }
+        var response = new CommonUtils.ControllerResponseParams();
+        var posts = await postService.GetHomeFeedAsync(page, pageSize);
+        response.Success = true;
+        response.Message = "Home feed fetched successfully";
+        response.Data = posts;
+        return Ok(response);
     }
 
-    [EnableRateLimiting("create-post")]
+    [Authorize]
+    [RateLimit(AppConstants.ApiRequestAction.UpdatePost)]
     [HttpPatch("{id:long}")]
     public async Task<IActionResult> UpdatePost(long id, [FromBody] CreateUpdatePostRequestDto updatePostRequest)
     {
@@ -70,6 +62,7 @@ public class PostController(
         return Ok(response);
     }
 
+    [Authorize]
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> DeletePostById(long id)
     {
@@ -81,7 +74,6 @@ public class PostController(
         return Ok(response);
     }
 
-    [EnableRateLimiting("feed")]
     [HttpGet("{id:long}/recommendations")]
     public async Task<IActionResult> GetRecommendations(long id, [FromQuery] int limit = 5)
     {

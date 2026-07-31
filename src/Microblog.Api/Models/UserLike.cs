@@ -8,9 +8,11 @@ public class UserLike
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-/* For caching/DB sync */
+/* Enqueued to Redis and drained to SQL in batches by BackgroundSyncService. */
 public class LikeEvent
 {
+    // Unique id so two otherwise-identical events never collide as sorted-set members.
+    public Guid EventId { get; set; } = Guid.NewGuid();
     public long PostId { get; set; }
     public long UserId { get; set; }
     public LikeAction Action { get; set; }

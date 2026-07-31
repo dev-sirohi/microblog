@@ -262,31 +262,41 @@ asked us to find.**
 
 ---
 
-## Part 11 — Questions I need you to answer
+## Part 11 — Decisions (settled)
 
-These genuinely change what we build, so I need your call. (Answer in plain words — I'll
-handle the technical side.)
-
-1. **Should the tests run against your app with its speed limits ON or OFF?**
-   - OFF (Development mode): we find the *true* maximum speed of your app.
-   - ON (Production mode): more realistic, but most tests will quickly hit the "slow down,
-     too many requests" wall and we won't learn the real ceiling.
-   - *My suggestion:* mostly OFF to find limits, plus one test with it ON to confirm the
-     limits work. **Which do you want as the default?**
-
-2. **There's no way to read a post's like count from the outside.** Your code can count
-   likes internally, but no endpoint exposes it. Do you want to:
-   - (a) skip testing like-reads,
-   - (b) add a small new endpoint to your API so we can test it, or
-   - (c) check it indirectly?
-
-3. **The tests create fake users and posts every time they run, so your database will fill
-   up with junk.** Is that fine, or do you want the tests to clean up after themselves /
-   use a separate throwaway database?
-
-Once you answer these three, I'll start building the foundation (step 1 above).
+1. **Speed limits OFF by default.** We run the API in **Development mode** (rate limiting
+   disabled) to find true maximum throughput. A dedicated `RateLimitBehavior` test (run
+   against Production mode) will later confirm the limits work — but that's not the default.
+2. **Like-count read endpoint: added.** A new `GET /api/UserLike/{id}` endpoint now exposes
+   the like count + whether the current user liked it, so we can load-test the read path.
+3. **Junk data: left as-is for now.** Tests create throwaway users/posts each run and don't
+   clean up. Fine for local runs; we can add a teardown or use a disposable test DB later.
 
 ---
 
-*(If you want even more plain-English detail on any single test, just ask and I'll expand
-that one.)*
+## Part 12 — What's built so far (Phase 0 + first tests)
+
+Done and compiling:
+
+- **Foundation** (`Shared/`): `.env` loader, config, the HTTP client + login helper
+  (`AuthHelper`/`AuthedUser`), the `UserPool`, and the load profiles.
+- **Dispatcher** (`Program.cs`): `dotnet run -- --scenario <name>` / `--list` / `all`.
+- **Three scenarios:** `smoke`, `like-storm` (the headline test), `like-read`.
+
+Two small **bug fixes in the API** were required first, because logging in was broken and
+no authenticated test could have worked otherwise:
+- access tokens were created already-expired (a `Jwt:ExpireMinutes` config-name typo), and
+- the login endpoint threw internally because it referenced a `User` field the login result
+  didn't include.
+
+**How to run it** (needs the API + Redis + SQL running, e.g. via `docker-compose up`):
+
+```powershell
+cd src/StressTestSuite/Microblog.LoadTests
+# edit .env so BASE_URL points at your running API
+dotnet run -- --scenario smoke        # sanity check first
+dotnet run -- --scenario like-storm   # the headline test
+```
+
+**Next:** build out the remaining scenarios from the catalog in Part 8 (posts, follows,
+comments, auth, realistic mix), one file at a time.

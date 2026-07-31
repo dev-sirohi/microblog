@@ -4,7 +4,6 @@ public sealed class GlobalConfig
 {
     public bool DisableRateLimiting { get; private set; }
     public bool EnableEmbeddings { get; private set; }
-    public bool EnableAzureStorage { get; private set; }
     public string MessagingProvider { get; private set; } = "none";
 
     private readonly IConfiguration _configuration;
@@ -19,13 +18,13 @@ public sealed class GlobalConfig
 
     private void Initialize()
     {
-        if (_environment.IsDevelopment())
-        {
-            DisableRateLimiting = true;
-        }
+        // Rate limiting is off in Development by default, but an explicit config flag
+        // ("RateLimiting:Disabled") always wins — this lets integration tests exercise
+        // the limiter while still running under the Development environment.
+        DisableRateLimiting = _configuration.GetValue<bool?>("RateLimiting:Disabled")
+                              ?? _environment.IsDevelopment();
 
         EnableEmbeddings = _configuration.GetValue<bool>("Features:EnableEmbeddings");
-        EnableAzureStorage = _configuration.GetValue<bool>("Features:EnableAzureStorage");
         MessagingProvider = _configuration["Features:MessagingProvider"] ?? "none";
     }
 }

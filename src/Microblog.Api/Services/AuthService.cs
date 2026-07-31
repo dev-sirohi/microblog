@@ -50,11 +50,14 @@ public class AuthService(
 
         string passwordHash = CommonUtils.HashPassword(password);
 
-        var user = await dbContext.Users.FirstOrDefaultAsync(user =>
-            ((!string.IsNullOrWhiteSpace(username) &&
-              user.Username.Equals(username, StringComparison.OrdinalIgnoreCase)) ||
-             (!string.IsNullOrWhiteSpace(email) && user.Email.Equals(email, StringComparison.OrdinalIgnoreCase))) &&
-            user.PasswordHash == passwordHash);
+        // Match by username or email. SQL Server's default collation is case-insensitive, and
+        // (unlike string.Equals with StringComparison) plain '==' translates to SQL.
+        bool hasUsername = !string.IsNullOrWhiteSpace(username);
+        bool hasEmail = !string.IsNullOrWhiteSpace(email);
+
+        var user = await dbContext.Users.FirstOrDefaultAsync(u =>
+            ((hasUsername && u.Username == username) || (hasEmail && u.Email == email))
+            && u.PasswordHash == passwordHash);
         if (user == null) throw new Exception("Invalid credentials");
 
         accessToken = GenerateAccessToken(user);
@@ -64,7 +67,8 @@ public class AuthService(
         return new
         {
             AccessToken = accessToken,
-            RefreshToken = refreshToken
+            RefreshToken = refreshToken,
+            User = user
         };
     }
 
@@ -152,7 +156,7 @@ public class AuthService(
             configuration["Jwt:Issuer"],
             configuration["Jwt:Audience"],
             claims,
-            expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(configuration["Jwt:ExpiresMinutes"])),
+            expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(configuration["Jwt:ExpireMinutes"])),
             signingCredentials: creds
         );
 

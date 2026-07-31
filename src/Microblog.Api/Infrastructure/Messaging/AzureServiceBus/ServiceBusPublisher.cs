@@ -6,7 +6,7 @@ namespace Microblog.Api.Infrastructure.Messaging.AzureServiceBus;
 
 /// <summary>
 /// Publishes domain events to Azure Service Bus.
-/// Configured as an alternative to <see cref="Kafka.KafkaPublisher"/> via <c>Features:MessagingProvider = "azure-service-bus"</c>.
+/// Enabled via <c>Features:MessagingProvider = "azure-service-bus"</c> plus a connection string.
 /// </summary>
 public sealed class ServiceBusPublisher : IMessagePublisher, IAsyncDisposable
 {

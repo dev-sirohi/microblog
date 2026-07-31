@@ -12,4 +12,10 @@
     <PackageReference Include="NBomber.Http" Version="6.2.0" />
   </ItemGroup>
 
+  <!-- Copy the .env file next to the built app so it's found no matter how you run. -->
+  <ItemGroup>
+    <None Include=".env" Condition="Exists('.env')" CopyToOutputDirectory="PreserveNewest" />
+    <None Include=".env.example" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

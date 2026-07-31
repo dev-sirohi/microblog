@@ -1,13 +1,11 @@
-using Microsoft.AspNetCore.RateLimiting;
-
 namespace Microblog.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[EnableRateLimiting("auth")]
 public class AuthController(IAuthService authService, IConfiguration configuration)
     : ControllerBase
 {
+    [RateLimit(AppConstants.ApiRequestAction.Register)]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] UserRegisterDto request)
     {
@@ -23,6 +21,7 @@ public class AuthController(IAuthService authService, IConfiguration configurati
         return Ok(response);
     }
 
+    [RateLimit(AppConstants.ApiRequestAction.Login)]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] UserLoginDto request)
     {
@@ -52,6 +51,7 @@ public class AuthController(IAuthService authService, IConfiguration configurati
         return Ok(response);
     }
 
+    [RateLimit(AppConstants.ApiRequestAction.Login)]
     [HttpPost("refreshtoken")]
     public async Task<IActionResult> RefreshToken()
     {

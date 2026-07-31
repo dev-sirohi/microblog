@@ -6,7 +6,7 @@ namespace Microblog.Api.Infrastructure.Messaging.AzureServiceBus;
 
 /// <summary>
 /// Hosted service that consumes events from Azure Service Bus.
-/// Mirrors the Kafka consumer; activated when <c>Features:MessagingProvider = "azure-service-bus"</c>.
+/// Activated when <c>Features:MessagingProvider = "azure-service-bus"</c>.
 /// </summary>
 public sealed class ServiceBusConsumerService : BackgroundService
 {

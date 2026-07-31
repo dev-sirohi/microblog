@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Microblog.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260529120143_InitialCreateModelsOnly")]
-    partial class InitialCreateModelsOnly
+    [Migration("20260723162950_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -136,6 +136,9 @@ namespace Microblog.Api.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("EmbeddingData")
+                        .HasColumnType("varbinary(max)");
 
                     b.Property<DateTime>("ModifiedAt")
                         .HasColumnType("datetime2");

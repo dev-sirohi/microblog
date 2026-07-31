@@ -3,6 +3,7 @@
 public interface IPostService
 {
     Task<Post> CreatePostAsync(long userId, string content);
+    Task<List<Post>> GetHomeFeedAsync(int page = 1, int pageSize = 10);
     Task<Post> GetPostByIdAsync(long postId);
 
     Task<List<Post>> GetUserPostsAsync(long userId, int page = 1, int pageSize = 10,

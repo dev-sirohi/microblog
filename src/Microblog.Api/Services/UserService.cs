@@ -47,18 +47,4 @@ public class UserService(
 
         return userList;
     }
-
-    public async Task<long> GetUserFollowerCountAsync(long userId)
-    {
-        return Convert.ToInt64(
-            await _inMemoryDb.StringGetAsync(
-                InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.USER_FOLLOWER_COUNT)));
-    }
-
-    public async Task<long> GetUserFollowingCountAsync(long userId)
-    {
-        return Convert.ToInt64(
-            await _inMemoryDb.StringGetAsync(
-                InMemoryUtils.GetKey(AppConstants.InMemoryOperationType.USER_FOLLOWING_COUNT)));
-    }
 }

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Microblog.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreateModelsOnly : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -56,7 +56,8 @@ namespace Microblog.Api.Migrations
                     UserId = table.Column<long>(type: "bigint", nullable: false),
                     Content = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    ModifiedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ModifiedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EmbeddingData = table.Column<byte[]>(type: "varbinary(max)", nullable: true)
                 },
                 constraints: table =>
                 {

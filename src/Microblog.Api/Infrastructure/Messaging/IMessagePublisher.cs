@@ -1,6 +1,6 @@
 namespace Microblog.Api.Infrastructure.Messaging;
 
-/// <summary>Publishes domain events to the configured message bus (Kafka or Azure Service Bus).</summary>
+/// <summary>Publishes domain events to the configured message bus (Azure Service Bus).</summary>
 public interface IMessagePublisher
 {
     /// <summary>Publishes <paramref name="message"/> to <paramref name="topic"/>.</summary>

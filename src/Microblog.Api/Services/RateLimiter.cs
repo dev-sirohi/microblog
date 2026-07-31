@@ -1,67 +1,81 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 
 namespace Microblog.Api.Services;
 
-public class RateLimiter : IRateLimiter
+/// <summary>
+/// Redis-backed <b>sliding-window log</b> rate limiter.
+///
+/// For every request we keep a Redis sorted set per (action, caller) where the score of
+/// each member is the request timestamp (Unix milliseconds). On each call we:
+///   1. drop every entry older than <c>now - window</c>  (ZREMRANGEBYSCORE),
+///   2. count what remains inside the window            (ZCARD),
+///   3. reject if the count already reached the limit,  otherwise
+///   4. record this request                             (ZADD) and refresh the key TTL.
+///
+/// Unlike a fixed window (a single INCR that resets on a clock boundary and lets a caller
+/// burst 2x the limit across the boundary), this counts the *last N seconds continuously*,
+/// so the limit is enforced smoothly at every instant. The counter lives in Redis, so it is
+/// shared across every API instance.
+/// </summary>
+public sealed class RateLimiter : IRateLimiter
 {
-    private readonly string? _clientIp = string.Empty;
+    private static readonly DateTime Epoch = DateTime.UnixEpoch;
+
+    private readonly string _callerKey;
     private readonly IDatabase _inMemoryDb;
-    private readonly long _userId;
 
     public RateLimiter(IConnectionMultiplexer connectionMultiplexer, IHttpContextAccessor httpContextAccessor)
     {
         _inMemoryDb = connectionMultiplexer.GetDatabase();
+
         var context = httpContextAccessor.HttpContext;
+        long userId = 0;
         if (context?.User?.Identity?.IsAuthenticated ?? false)
         {
             var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && long.TryParse(userIdClaim.Value, out long uid)) _userId = uid;
+            if (userIdClaim != null && long.TryParse(userIdClaim.Value, out long uid)) userId = uid;
         }
 
-        if (_userId == 0)
+        // Authenticated callers are limited per user; anonymous callers per client IP.
+        if (userId > 0)
         {
-            _clientIp = Convert.ToString(httpContextAccessor.HttpContext?.Connection.RemoteIpAddress);
-            if (string.IsNullOrWhiteSpace(_clientIp))
-                throw new Exception("Could not fetch client IP address for rate limiting");
+            _callerKey = $"userId:{userId}";
+        }
+        else
+        {
+            string? clientIp = context?.Connection.RemoteIpAddress?.ToString();
+            _callerKey = string.IsNullOrWhiteSpace(clientIp) ? "clientIp:unknown" : $"clientIp:{clientIp}";
         }
     }
 
     public async Task<bool> IsRequestAllowedAsync(AppConstants.ApiRequestAction requestType)
     {
-        int limit = requestType switch
-        {
-            AppConstants.ApiRequestAction.CreatePost => 5,
-            AppConstants.ApiRequestAction.CreateUser => 5,
-            AppConstants.ApiRequestAction.Login => 5,
-            AppConstants.ApiRequestAction.UnlikePost => 25,
-            AppConstants.ApiRequestAction.LikePost => 25,
-            _ => 10
-        };
-        var period = requestType switch
-        {
-            AppConstants.ApiRequestAction.CreatePost => TimeSpan.FromMinutes(1),
-            AppConstants.ApiRequestAction.CreateUser => TimeSpan.FromMinutes(5),
-            AppConstants.ApiRequestAction.Login => TimeSpan.FromMinutes(1),
-            AppConstants.ApiRequestAction.LikePost => TimeSpan.FromMinutes(1),
-            AppConstants.ApiRequestAction.UnlikePost => TimeSpan.FromMinutes(1),
-            _ => TimeSpan.FromMinutes(1)
-        };
+        var (limit, window) = GetPolicy(requestType);
+        string key = $"rl:{requestType}:{_callerKey}";
 
-        if (_userId > 0)
+        double nowMs = (DateTime.UtcNow - Epoch).TotalMilliseconds;
+        double windowStartMs = nowMs - window.TotalMilliseconds;
+
+        try
         {
-            string key = $"{requestType}:userId:{_userId}";
-            long count = await _inMemoryDb.StringIncrementAsync(key);
-            if (count == 1) await _inMemoryDb.KeyExpireAsync(key, period);
-            if (count > limit)
+            // 1. Evict everything that has slid out of the window.
+            await _inMemoryDb.SortedSetRemoveRangeByScoreAsync(key, double.NegativeInfinity, windowStartMs);
+
+            // 2. Count requests still inside the window.
+            long countInWindow = await _inMemoryDb.SortedSetLengthAsync(key);
+            if (countInWindow >= limit)
                 throw new AppException(GetRateLimitErrorMessage(requestType), HttpStatusCode.TooManyRequests);
+
+            // 3. Record this request (member must be unique so concurrent requests don't collide).
+            await _inMemoryDb.SortedSetAddAsync(key, $"{nowMs}:{Guid.NewGuid():N}", nowMs);
+
+            // 4. Let Redis reclaim the key once the whole window has elapsed with no traffic.
+            await _inMemoryDb.KeyExpireAsync(key, window + TimeSpan.FromSeconds(1));
         }
-        else
+        catch (RedisException)
         {
-            string key = $"{requestType}:clientIp:{_clientIp}";
-            long count = await _inMemoryDb.StringIncrementAsync(key);
-            if (count == 1) await _inMemoryDb.KeyExpireAsync(key, period);
-            if (count > limit)
-                throw new AppException(GetRateLimitErrorMessage(requestType), HttpStatusCode.TooManyRequests);
+            // Fail open: if the rate-limit store is unavailable, don't take the API down with it.
+            return true;
         }
 
         return true;
@@ -69,20 +83,29 @@ public class RateLimiter : IRateLimiter
 
     public async Task ResetLimits(AppConstants.ApiRequestAction requestType)
     {
-        string key = $"{requestType}:{_clientIp}";
-        await _inMemoryDb.KeyDeleteAsync(key);
+        await _inMemoryDb.KeyDeleteAsync($"rl:{requestType}:{_callerKey}");
     }
 
-    public string GetRateLimitErrorMessage(AppConstants.ApiRequestAction requestType)
+    /// <summary>Per-endpoint policy: (max requests, window). This is where "per-endpoint policies" lives.</summary>
+    private static (int limit, TimeSpan window) GetPolicy(AppConstants.ApiRequestAction requestType) => requestType switch
     {
-        return requestType switch
-        {
-            AppConstants.ApiRequestAction.CreatePost =>
-                "Rate limit exceeded for creating posts. Please try again later.",
-            AppConstants.ApiRequestAction.CreateUser =>
-                "Rate limit exceeded for creating users. Please try again later.",
-            AppConstants.ApiRequestAction.Login => "Rate limit exceeded for login attempts. Please try again later.",
-            _ => "Rate limit exceeded. Please try again later."
-        };
-    }
+        AppConstants.ApiRequestAction.Login      => (5,  TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.Register   => (5,  TimeSpan.FromMinutes(5)),
+        AppConstants.ApiRequestAction.CreatePost => (10, TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.UpdatePost => (10, TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.AddComment => (20, TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.LikePost   => (60, TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.UnlikePost => (60, TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.Follow     => (30, TimeSpan.FromMinutes(1)),
+        AppConstants.ApiRequestAction.Unfollow   => (30, TimeSpan.FromMinutes(1)),
+        _                                        => (30, TimeSpan.FromMinutes(1))
+    };
+
+    public string GetRateLimitErrorMessage(AppConstants.ApiRequestAction requestType) => requestType switch
+    {
+        AppConstants.ApiRequestAction.CreatePost => "Rate limit exceeded for creating posts. Please try again later.",
+        AppConstants.ApiRequestAction.Register   => "Rate limit exceeded for registration. Please try again later.",
+        AppConstants.ApiRequestAction.Login       => "Too many login attempts. Please try again later.",
+        _                                         => "Rate limit exceeded. Please try again later."
+    };
 }

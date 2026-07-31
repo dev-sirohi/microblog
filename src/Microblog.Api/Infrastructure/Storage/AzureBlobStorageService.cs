@@ -6,7 +6,7 @@ namespace Microblog.Api.Infrastructure.Storage;
 
 /// <summary>
 /// Stores media files in Azure Blob Storage and returns SAS URLs for secure access.
-/// Activated when <c>Features:EnableAzureStorage = true</c>.
+/// Uses Azurite locally via <c>Azure:BlobConnectionString = "UseDevelopmentStorage=true"</c>.
 /// </summary>
 public sealed class AzureBlobStorageService : IStorageService
 {
@@ -17,7 +17,7 @@ public sealed class AzureBlobStorageService : IStorageService
     {
         _logger = logger;
         string connectionString = config["Azure:BlobConnectionString"]
-            ?? throw new InvalidOperationException("Azure:BlobConnectionString is required when EnableAzureStorage is true");
+            ?? throw new InvalidOperationException("Azure:BlobConnectionString is required for blob storage");
         string containerName = config["Azure:BlobContainerName"] ?? "microblog-media";
         _container = new BlobContainerClient(connectionString, containerName);
         _container.CreateIfNotExists(PublicAccessType.None);

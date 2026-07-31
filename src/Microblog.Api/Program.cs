@@ -1,4 +1,3 @@
-using System.Threading.RateLimiting;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Microblog.Api.Features.Recommendations;
@@ -6,13 +5,10 @@ using Microblog.Api.Features.Recommendations.EmbeddingProviders;
 using Microblog.Api.Infrastructure.Caching;
 using Microblog.Api.Infrastructure.Messaging;
 using Microblog.Api.Infrastructure.Messaging.AzureServiceBus;
-using Microblog.Api.Infrastructure.Messaging.Kafka;
-using Microblog.Api.Infrastructure.RateLimiting.Policies;
 using Microblog.Api.Infrastructure.Storage;
 using Microblog.Api.Interfaces.ProviderInterfaces;
 using Microblog.Api.Services.BackgroundProcesses;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
@@ -68,6 +64,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtSettings["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]!))
         };
+
+        // The access token lives in an HTTP-only cookie, so pull it from there
+        // (JwtBearer only looks at the Authorization header by default).
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                if (string.IsNullOrEmpty(ctx.Token) &&
+                    ctx.Request.Cookies.TryGetValue("accessToken", out var cookieToken))
+                {
+                    ctx.Token = cookieToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -87,46 +98,19 @@ builder.Services.AddSingleton<IDistributedLockFactory>(sp =>
 });
 
 // ─── CORS ───────────────────────────────────────────────────────────────────────────
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                     ?? ["http://localhost:3000"];
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
     options.AddPolicy("CorsPolicy", b =>
-        b.WithOrigins("http://localhost:3000")
+        b.WithOrigins(allowedOrigins)
          .AllowCredentials().AllowAnyHeader().AllowAnyMethod());
 });
 
-// ─── Rate Limiting (ASP.NET Core built-in + Redis-backed) ───────────────────────────
-builder.Services.AddSingleton<AuthRateLimiterPolicy>();
-builder.Services.AddSingleton<CreatePostRateLimiterPolicy>();
-builder.Services.AddSingleton<FeedRateLimiterPolicy>();
-
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = async (ctx, ct) =>
-    {
-        ctx.HttpContext.Response.Headers.RetryAfter = "60";
-        await ctx.HttpContext.Response.WriteAsJsonAsync(new
-        {
-            Success = false,
-            StatusCode = 429,
-            Message = "Too many requests. Please try again later."
-        }, ct);
-    };
-
-    if (builder.Environment.IsDevelopment())
-    {
-        // No limits in development
-        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(
-            _ => RateLimitPartition.GetNoLimiter("dev"));
-    }
-    else
-    {
-        options.AddPolicy<string, AuthRateLimiterPolicy>(AuthRateLimiterPolicy.Name);
-        options.AddPolicy<string, CreatePostRateLimiterPolicy>(CreatePostRateLimiterPolicy.Name);
-        options.AddPolicy<string, FeedRateLimiterPolicy>(FeedRateLimiterPolicy.Name);
-    }
-});
+// ─── Rate Limiting (custom Redis sliding-window filter — see Services/RateLimiter.cs) ─
+// Applied per-endpoint via the [RateLimit(action)] attribute; scoped so it can read the
+// current HttpContext (user id / client IP) for each request.
+builder.Services.AddScoped<IRateLimiter, RateLimiter>();
 
 // ─── Observability: OpenTelemetry ────────────────────────────────────────────────────
 var serviceName = builder.Configuration["Observability:ServiceName"] ?? "microblog-api";
@@ -163,11 +147,13 @@ builder.Services.AddHttpClient("openai")
     {
         options.Retry.MaxRetryAttempts = 3;
         options.Retry.Delay = TimeSpan.FromSeconds(1);
+        // Per-attempt timeout; SamplingDuration must be >= 2x this, and TotalRequestTimeout >= it.
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
         options.CircuitBreaker.FailureRatio = 0.5;
-        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(10);
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
         options.CircuitBreaker.MinimumThroughput = 8;
         options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(60);
     });
 
 // ─── Global config / misc ────────────────────────────────────────────────────────────
@@ -177,25 +163,19 @@ builder.Services.AddSingleton<GlobalConfig>();
 // ─── Caching (cache-aside + RedLock) ─────────────────────────────────────────────────
 builder.Services.AddSingleton<ICacheService, RedisCacheService>();
 
-// ─── Storage ─────────────────────────────────────────────────────────────────────────
-var enableAzureStorage = builder.Configuration.GetValue<bool>("Features:EnableAzureStorage");
-if (enableAzureStorage)
-    builder.Services.AddScoped<IStorageService, AzureBlobStorageService>();
-else
-    builder.Services.AddScoped<IStorageService, LocalStorageService>();
+// ─── Storage (Azure Blob Storage; use Azurite locally via UseDevelopmentStorage=true) ─
+builder.Services.AddScoped<IStorageService, AzureBlobStorageService>();
 
-// ─── Messaging ───────────────────────────────────────────────────────────────────────
+// ─── Messaging (Azure Service Bus) ────────────────────────────────────────────────────
+// Enabled when Features:MessagingProvider = "azure-service-bus" AND a connection string
+// is configured. The IMessagePublisher abstraction keeps the door open for other buses.
 var messagingProvider = builder.Configuration["Features:MessagingProvider"] ?? "none";
-switch (messagingProvider.ToLowerInvariant())
+var serviceBusConnection = builder.Configuration["Azure:ServiceBusConnectionString"];
+if (messagingProvider.Equals("azure-service-bus", StringComparison.OrdinalIgnoreCase)
+    && !string.IsNullOrWhiteSpace(serviceBusConnection))
 {
-    case "kafka":
-        builder.Services.AddSingleton<IMessagePublisher, KafkaPublisher>();
-        builder.Services.AddHostedService<KafkaConsumerService>();
-        break;
-    case "azure-service-bus":
-        builder.Services.AddSingleton<IMessagePublisher, ServiceBusPublisher>();
-        builder.Services.AddHostedService<ServiceBusConsumerService>();
-        break;
+    builder.Services.AddSingleton<IMessagePublisher, ServiceBusPublisher>();
+    builder.Services.AddHostedService<ServiceBusConsumerService>();
 }
 
 // ─── Embeddings / Recommendations ────────────────────────────────────────────────────
@@ -213,7 +193,6 @@ builder.Services.AddScoped<IPostService, PostService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<IUserFollowService, UserFollowService>();
 builder.Services.AddScoped<IUserLikeService, UserLikeService>();
-builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IMediaService, MediaService>();
 builder.Services.AddHostedService<BackgroundSyncService>();
 
@@ -231,16 +210,15 @@ var app = builder.Build();
 // ─── Pipeline ────────────────────────────────────────────────────────────────────────
 app.UseExceptionHandlerMiddleware();
 
+// Cookie auth is credentialed, so we always use the specific-origin policy
+// (AllowAnyOrigin + credentials is invalid and silently breaks the SPA login).
+app.UseCors("CorsPolicy");
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    app.UseCors("AllowAll");
     app.UseTestMiddleware();
-}
-else
-{
-    app.UseCors("CorsPolicy");
 }
 
 // Prometheus scrape endpoint at /metrics
@@ -259,7 +237,6 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 });
 
 app.UseHttpsRedirection();
-app.UseRateLimiter();
 
 var webRoot = app.Environment.WebRootPath
               ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
@@ -283,3 +260,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+// Exposed so the integration test project can spin up the app via WebApplicationFactory<Program>.
+public partial class Program { }

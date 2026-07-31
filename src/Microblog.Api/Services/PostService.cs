@@ -36,6 +36,26 @@ public class PostService(
         return newPost;
     }
 
+    public async Task<List<Post>> GetHomeFeedAsync(int page = 1, int pageSize = 10)
+    {
+        if (page < 1) page = 1;
+        pageSize = Math.Clamp(pageSize, 1, 50);
+
+        // Simple reverse-chronological global feed.
+        return await dbContext.Posts
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new Post
+            {
+                Id = p.Id,
+                Content = p.Content,
+                CreatedAt = p.CreatedAt,
+                UserId = p.UserId
+            })
+            .ToListAsync();
+    }
+
     public async Task DeletePostAsync(long postId, long userId)
     {
         if (postId == 0) throw new Exception("Unable to delete post. Post Id not provided");
