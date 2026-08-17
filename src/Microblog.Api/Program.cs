@@ -1,4 +1,3 @@
-using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Microblog.Api.Infrastructure.Caching;
 using Microblog.Api.Infrastructure.Messaging;
@@ -7,7 +6,6 @@ using Microblog.Api.Infrastructure.Storage;
 using Microblog.Api.Services.BackgroundProcesses;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -106,9 +104,6 @@ app.UseCors("CorsPolicy");
 
 app.UseSwagger();
 app.UseSwaggerUI();
-
-app.UseMetricServer();
-app.UseHttpMetrics();
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -1,6 +1,5 @@
 using Azure.Messaging.ServiceBus;
 using System.Text.Json;
-using Microblog.Api.Infrastructure.Observability;
 
 namespace Microblog.Api.Infrastructure.Messaging.AzureServiceBus;
 
@@ -33,11 +32,9 @@ public sealed class ServiceBusPublisher : IMessagePublisher, IAsyncDisposable
         try
         {
             await _sender.SendMessageAsync(sbMessage, ct);
-            AppMetrics.MessagesPublished.WithLabels(topic).Inc();
         }
         catch (Exception ex)
         {
-            AppMetrics.MessageErrors.WithLabels(topic).Inc();
             _logger.LogError(ex, "Failed to publish Service Bus message for topic {Topic}", topic);
             throw;
         }

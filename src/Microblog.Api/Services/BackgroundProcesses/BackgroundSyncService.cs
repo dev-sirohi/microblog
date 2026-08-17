@@ -1,5 +1,3 @@
-using Microblog.Api.Infrastructure.Observability;
-
 namespace Microblog.Api.Services.BackgroundProcesses;
 
 internal sealed class BackgroundSyncService(
@@ -23,11 +21,9 @@ internal sealed class BackgroundSyncService(
 
                 await DrainLikesAsync(db);
                 await DrainFollowsAsync(db);
-                UpdateQueueDepthMetric();
             }
             catch (Exception ex)
             {
-                AppMetrics.BackgroundSyncErrors.Inc();
                 logger.LogError(ex, "Background sync pass failed");
             }
 
@@ -57,7 +53,6 @@ internal sealed class BackgroundSyncService(
 
         await db.SaveChangesAsync();
         await _redis.SortedSetRemoveRangeByRankAsync(SyncQueue.LikeEventsKey, 0, raw.Length - 1);
-        AppMetrics.BackgroundSyncProcessed.Inc(raw.Length);
     }
 
     private async Task DrainFollowsAsync(AppDbContext db)
@@ -82,16 +77,5 @@ internal sealed class BackgroundSyncService(
 
         await db.SaveChangesAsync();
         await _redis.SortedSetRemoveRangeByRankAsync(SyncQueue.FollowEventsKey, 0, raw.Length - 1);
-        AppMetrics.BackgroundSyncProcessed.Inc(raw.Length);
-    }
-
-    private void UpdateQueueDepthMetric()
-    {
-        try
-        {
-            long depth = _redis.SortedSetLength(SyncQueue.LikeEventsKey) + _redis.SortedSetLength(SyncQueue.FollowEventsKey);
-            AppMetrics.BackgroundSyncQueueDepth.Set(depth);
-        }
-        catch {  }
     }
 }

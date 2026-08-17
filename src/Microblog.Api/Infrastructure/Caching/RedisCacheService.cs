@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microblog.Api.Infrastructure.Observability;
 
 namespace Microblog.Api.Infrastructure.Caching;
 
@@ -40,11 +39,9 @@ public sealed class RedisCacheService(
             RedisValue raw = await _db.StringGetAsync(key);
             if (raw.IsNullOrEmpty)
             {
-                AppMetrics.CacheMisses.WithLabels("get").Inc();
                 return default;
             }
 
-            AppMetrics.CacheHits.WithLabels("get").Inc();
             return JsonSerializer.Deserialize<T>((string)raw!);
         }
         catch (Exception ex)

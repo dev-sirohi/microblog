@@ -57,7 +57,6 @@ public class UsersController(
             FollowersCount = followers.Count,
             FollowingCount = following.Count,
             IsFollowing = isFollowing,
-            Posts = posts
         };
         return Ok(response);
     }

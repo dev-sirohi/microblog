@@ -15,10 +15,7 @@ limiter, and the infrastructure — not the feature set.
   Server in batches by a hosted `BackgroundService`, keeping user-facing latency off the database.
 - **Pluggable infrastructure** — `IMessagePublisher` (Azure Service Bus) and `IStorageService`
   (Azure Blob Storage) behind interfaces.
-- **Observability** — Prometheus metrics scraped into auto-provisioned Grafana dashboards
-  (request latency, cache-hit ratio, background-sync queue depth).
 - **Deployment** — Azure App Service with secrets in Azure Key Vault, shipped by a GitHub Actions pipeline.
-- **Integration tests** — xUnit + Testcontainers covering auth, rate limiting, and the batched write path.
 
 ---
 
@@ -53,7 +50,6 @@ React SPA (web-client/) ──HTTP (auth cookies)──▶ ASP.NET Core API (src
 | GET | `/api/userfollow` · `/api/userfollow/following` | ✔ | – |
 | GET | `/api/users/me` · `/api/users/{id}` | ✔ / – | – |
 | POST | `/api/users/me/avatar` | ✔ | – |
-| GET | `/metrics` | – | – |
 
 ---
 
@@ -66,8 +62,8 @@ cd src
 docker-compose up
 ```
 
-Starts the API (:8080), SQL Server (:1433), Redis (:6379), Azurite (:10000), Prometheus (:9090)
-and Grafana (:3001, admin/admin). The API auto-migrates the database on startup.
+Starts the API (:8080), SQL Server (:1433), Redis (:6379), and Azurite (:10000).
+The API auto-migrates the database on startup.
 
 ### Locally
 
@@ -83,23 +79,15 @@ npm install
 npm run dev         # http://localhost:3000
 ```
 
-### Tests
-
-```powershell
-cd src
-dotnet test Microblog.Tests/Microblog.Tests.csproj
-```
-
-Requires a running Docker daemon — Testcontainers starts throwaway SQL Server and Redis containers
-and the tests exercise the real app through `WebApplicationFactory<Program>`.
-
 ---
 
 ## Key design decisions
 
 - **Eventual consistency for likes/follows.** They hit Redis first and drain to SQL in the background.
   Batches are collapsed to the final intent per entity, and events are processed *before* being
-  removed from the queue, so a crash mid-batch re-processes safely rather than losing writes.
+  removed from the queue, so a crash mid-batch re-processes safely rather than losing writes. Redis
+  also serves reads (likers/following/followers sets) and is lazily rebuilt from SQL on a cache miss,
+  so the cache is disposable, not a second source of truth.
 - **A custom sliding-window rate limiter.** A fixed window lets a caller burst 2× the limit across the
   boundary; a sliding-window log over a Redis sorted set enforces the limit at every instant, and
   living in Redis means it holds across every API instance. It fails open if Redis is unavailable.
@@ -107,6 +95,10 @@ and the tests exercise the real app through `WebApplicationFactory<Program>`.
   flags, so the same build runs against Docker containers locally and Azure services in the cloud.
 - **Interfaces where implementations actually swap** — storage, messaging, caching and rate limiting.
   Single-implementation domain services are injected as concrete classes.
+- **Messaging is optional and best-effort.** `IMessagePublisher` is only registered when
+  `Features:MessagingProvider` is set to `azure-service-bus` with a connection string configured;
+  publish calls run fire-and-forget and swallow their own failures, so a Service Bus outage never
+  blocks a like, follow, or post.
 
 ---
 
@@ -119,5 +111,4 @@ Deliberately out of scope for now:
   computed off the write path.
 - **Cache stampede protection** — a distributed lock around cache-miss recomputation.
 - **Health probes** — `/health/ready` (SQL + Redis) and `/health/live` for App Service.
-- **Structured logging and tracing** — Serilog sinks and OpenTelemetry traces alongside the existing
-  Prometheus metrics.
+- **Structured logging and tracing** — Serilog sinks and OpenTelemetry traces.

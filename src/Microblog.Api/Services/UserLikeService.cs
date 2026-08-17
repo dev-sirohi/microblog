@@ -1,4 +1,3 @@
-using Microblog.Api.Infrastructure.Observability;
 using Microblog.Api.Services.BackgroundProcesses;
 
 namespace Microblog.Api.Services;
@@ -26,8 +25,6 @@ public class UserLikeService(
         {
             await _redis.SortedSetAddAsync(SyncQueue.PostLikersKey(postId), userId, SyncQueue.NowScore());
             await EnqueueAsync(new LikeEvent { UserId = userId, PostId = postId, Action = LikeAction.Like });
-
-            AppMetrics.PostLikes.Inc();
         }
         catch (Exception ex)
         {
